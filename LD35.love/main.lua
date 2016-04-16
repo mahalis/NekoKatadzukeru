@@ -1,6 +1,7 @@
 require "points"
 
 local grid = {} -- 2D grid of cat IDs
+local cats = {} -- list of cats by ID
 
 local GRID_SIZE = 5
 
@@ -33,6 +34,11 @@ function love.draw()
 	local catPoints = currentCat.points
 	for i = 1, #catPoints do
 		local point = catPoints[i]
+		if i == 1 then
+			love.graphics.setColor(255, 255, 255, 255)
+		else
+			love.graphics.setColor(255, 255, 255, 150)
+		end
 		love.graphics.circle("fill", point.x * 40, point.y * 40, 15)
 	end
 end
@@ -51,7 +57,53 @@ function love.keypressed(key)
 	end
 end
 
--- cat members: points, identifier
+function pickUpCatAtPosition(catPosition)
+	local identifier = grid[catPosition.x][catPosition.y].id
+	if identifier == 0 then return 0 end
+	local cat = cats[identifier]
+	local catPoints = cat.points
+	for i = 1, #catPoints do
+		local catPoint = catPoints[i]
+		local pointOnGrid = pAdd(catPosition, catPoint)
+		grid[pointOnGrid.x][pointOnGrid.y] = catGridCell(0, 0)
+	end
+	cat.isPlaced = false
+	cats[identifier] = cat
+	return identifier
+end
+
+function placeCatAtPosition(identifier, position)
+	if not canPlaceCatAtPosition(identifier, position) then return false end
+
+	local cat = cats[identifier]
+	local catPoints = cat.points
+	for i = 1, #catPoints do
+		local catPoint = catPoints[i]
+		local pointOnGrid = pAdd(position, catPoint)
+		local cellType = (i == 1 and 0 or (i == #catPoints and 2 or 1))
+		grid[pointOnGrid.x][pointOnGrid.y] = catGridCell(identifier, cellType)
+	end
+	cat.gridPosition = position
+	cat.isPlaced = true
+	cats[identifier] = cat
+
+	return true
+end
+
+function canPlaceCatAtPosition(identifier, position)
+	local cat = cats[identifier]
+	local catPoints = cat.points
+	for i = 1, #catPoints do
+		local catPoint = catPoints[i]
+		local pointOnGrid = pAdd(position, catPoint)
+		if grid[pointOnGrid.x][pointOnGrid.y].id ~= 0 then
+			return false
+		end
+	end
+	return true
+end
+
+-- cat members: points, identifier, gridPosition, isPlaced
 -- TODO: appearance (color / pattern / whatever), time of last movement, etc.
 function makeCat(length, identifier)
 	local lastPoint = p(0, 0)
@@ -86,6 +138,8 @@ function makeCat(length, identifier)
 	local cat = {}
 	cat.points = points
 	cat.identifier = identifier
+	cat.isPlaced = false
+	cat.gridPosition = p(0, 0)
 
 	return cat
 end
@@ -98,4 +152,11 @@ function rotateCat(cat, direction) -- returns a new cat; direction is 1 for cloc
 	cat.points = points
 
 	return cat
+end
+
+-- cell members: id, type
+function catGridCell(identifier, cellType) -- 0: head, 1: body, 2: tail
+	local cell = {}
+	cell.id = identifier
+	cell.type = cellType
 end
