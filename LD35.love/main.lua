@@ -3,22 +3,28 @@ require "points"
 local grid = {} -- 2D grid of cat IDs
 local cats = {} -- list of cats by ID
 
-local GRID_SIZE = 5
+local PLACEMENT_GRID_COLUMNS = 7
+local PLACEMENT_GRID_ROWS = 7
 
-local currentCat = nil
+local GRID_CELL_SIZE = 40
+local GRID_CELL_PADDING = 1
+
+local grabbedCat = nil
+local grabbedCatSegmentIndex = 1
 
 function love.load()
 	math.randomseed(os.time())
 	
-	for i = 1, GRID_SIZE do
+	for i = 1, PLACEMENT_GRID_COLUMNS do
 		local column = {}
-		for j = 1, GRID_SIZE do
-			column[#column + 1] = 0
+		for j = 1, PLACEMENT_GRID_ROWS do
+			column[#column + 1] = makeCatGridCell(0, 0)
 		end
 		grid[#grid + 1] = column
 	end
 
-	currentCat = makeCat(5, 0)
+	makeCat(5)
+	placeCatAtPosition(cats[1], p(4, 2))
 end
 
 function love.draw()
@@ -31,7 +37,17 @@ function love.draw()
 
 	love.graphics.translate(w / 2, h / 2)
 
-	local catPoints = currentCat.points
+	local gridStartX, gridStartY = -PLACEMENT_GRID_COLUMNS * GRID_CELL_SIZE / 2, -PLACEMENT_GRID_ROWS * GRID_CELL_SIZE / 2
+	for i = 1, PLACEMENT_GRID_COLUMNS do
+		local column = grid[i]
+		for j = 1, PLACEMENT_GRID_ROWS do
+			local cell = column[j]
+			local cellType = cell.type
+			love.graphics.rectangle("line", gridStartX + (i - 1) * GRID_CELL_SIZE + GRID_CELL_PADDING, gridStartY + (j - 1) * GRID_CELL_SIZE + GRID_CELL_PADDING, GRID_CELL_SIZE - 2 * GRID_CELL_PADDING, GRID_CELL_SIZE - 2 * GRID_CELL_PADDING)
+		end
+	end
+
+	local catPoints = cats[1].points
 	for i = 1, #catPoints do
 		local point = catPoints[i]
 		if i == 1 then
@@ -39,8 +55,11 @@ function love.draw()
 		else
 			love.graphics.setColor(255, 255, 255, 150)
 		end
-		love.graphics.circle("fill", point.x * 40, point.y * 40, 15)
+		love.graphics.circle("fill", point.x * 40, point.y * 40, GRID_CELL_SIZE * 0.45)
 	end
+
+	local mousePoint = mouseGridPoint()
+	love.graphics.circle("line", mousePoint.x * GRID_CELL_SIZE, mousePoint.y * GRID_CELL_SIZE, GRID_CELL_SIZE / 2)
 end
 
 function love.update(dt)
@@ -57,6 +76,48 @@ function love.keypressed(key)
 	end
 end
 
+function mouseGridPoint()
+	local mouseX, mouseY = mouseScreenPosition()
+	return p(round(mouseX / GRID_CELL_SIZE), round(mouseY / GRID_CELL_SIZE))
+end
+
+function mouseScreenPosition()
+	local w, h = love.window.getDimensions()
+	local pixelScale = love.window.getPixelScale()
+	local mouseX, mouseY = love.mouse.getPosition()
+	mouseX = (mouseX / pixelScale - w / 2)
+	mouseY = (mouseY / pixelScale - h / 2)
+	return mouseX, mouseY
+end
+
+-- end is 0 or 1 for head or tail (2 is right out); newPosition must be a position on the grid adjacent to the specified end
+function shiftCat(cat, whichEnd, newPosition)
+	local points = cat.points
+	local newPointInCatSpace = gridPositionToCatSpace(newPosition, cat)
+	if pointListContainsPoint(points, newPointInCatSpace) then return false end
+	local currentEndpoint = points[whichEnd == 0 and 1 or #points]
+	local dx, dy = math.abs(newPointInCatSpace.x - currentEndpoint.x), math.abs(newPointInCatSpace.y - currentEndpoint.y)
+	if dx > 1 or dy > 1 or dx + dy > 1 then return false end
+
+	-- TODO: if the cat is on the grid (grid, grid, grid, grid…), update the relevant points to contain the new end and not-contain the former other end
+	if whichEnd == 0 then
+		table.insert(points, 1, newPointInCatSpace)
+		table.remove(points, #points)
+	else
+		table.remove(points, 1)
+		table.insert(points, newPointInCatSpace) -- append
+	end
+
+	-- rearrange things so the head is 0,0 in cat space
+	local headOffset = points[1]
+	for i = 1, #points do
+		points[i] = pSub(points[i], headOffset)
+	end
+	cat.gridPosition = pAdd(cat.gridPosition, headOffset)
+
+	return true
+end
+
 function pickUpCatAtPosition(catPosition)
 	local identifier = grid[catPosition.x][catPosition.y].id
 	if identifier == 0 then return 0 end
@@ -65,33 +126,30 @@ function pickUpCatAtPosition(catPosition)
 	for i = 1, #catPoints do
 		local catPoint = catPoints[i]
 		local pointOnGrid = pAdd(catPosition, catPoint)
-		grid[pointOnGrid.x][pointOnGrid.y] = catGridCell(0, 0)
+		grid[pointOnGrid.x][pointOnGrid.y] = makeCatGridCell(0, 0)
 	end
 	cat.isPlaced = false
-	cats[identifier] = cat
+
 	return identifier
 end
 
-function placeCatAtPosition(identifier, position)
-	if not canPlaceCatAtPosition(identifier, position) then return false end
+function placeCatAtPosition(cat, position)
+	if not canPlaceCatAtPosition(cat, position) then return false end
 
-	local cat = cats[identifier]
 	local catPoints = cat.points
 	for i = 1, #catPoints do
 		local catPoint = catPoints[i]
 		local pointOnGrid = pAdd(position, catPoint)
-		local cellType = (i == 1 and 0 or (i == #catPoints and 2 or 1))
-		grid[pointOnGrid.x][pointOnGrid.y] = catGridCell(identifier, cellType)
+		local cellType = (i == 1 and 0 or (i == #catPoints and 1 or 2))
+		grid[pointOnGrid.x][pointOnGrid.y] = makeCatGridCell(identifier, cellType)
 	end
 	cat.gridPosition = position
 	cat.isPlaced = true
-	cats[identifier] = cat
 
 	return true
 end
 
-function canPlaceCatAtPosition(identifier, position)
-	local cat = cats[identifier]
+function canPlaceCatAtPosition(cat, position)
 	local catPoints = cat.points
 	for i = 1, #catPoints do
 		local catPoint = catPoints[i]
@@ -105,7 +163,8 @@ end
 
 -- cat members: points, identifier, gridPosition, isPlaced
 -- TODO: appearance (color / pattern / whatever), time of last movement, etc.
-function makeCat(length, identifier)
+function makeCat(length)
+	local identifier = #cats + 1
 	local lastPoint = p(0, 0)
 	local points = { lastPoint }
 	
@@ -141,22 +200,45 @@ function makeCat(length, identifier)
 	cat.isPlaced = false
 	cat.gridPosition = p(0, 0)
 
+	cats[identifier] = cat
+
 	return cat
 end
 
-function rotateCat(cat, direction) -- returns a new cat; direction is 1 for clockwise or -1 for counter
+function rotateCat(cat, direction) -- direction is 1 for clockwise or -1 for counter
 	local points = cat.points
 	for i = 1, #points do
 		points[i] = pRot(points[i], direction)
 	end
 	cat.points = points
+end
 
-	return cat
+function gridPositionToCatSpace(gridPosition, cat)
+	local catGridPosition = cat.gridPosition
+	return pSub(gridPosition, catGridPosition)
+end
+
+function catPositionToGridSpace(catPosition, cat)
+	local catGridPosition = cat.gridPosition
+	return pAdd(catPosition, catGridPosition)
 end
 
 -- cell members: id, type
-function catGridCell(identifier, cellType) -- 0: head, 1: body, 2: tail
+function makeCatGridCell(identifier, cellType) -- 0: head, 1: tail, 2: body
 	local cell = {}
 	cell.id = identifier
 	cell.type = cellType
+	return cell
+end
+
+function pointListContainsPoint(list, point)
+	for i = 1, #list do
+		if pEq(point, list[i]) then return true end
+	end
+
+	return false
+end
+
+function round(x)
+	return x >= 0 and math.floor(x + 0.5) or math.ceil(x - 0.5)
 end

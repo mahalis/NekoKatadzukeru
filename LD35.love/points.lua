@@ -18,3 +18,10 @@ end
 function pEq(p1, p2)
 	return (p1.x == p2.x and p1.y == p2.y)
 end
+
+function pStr(p1)
+	if p1 == nil then
+		return "NIL"
+	end
+	return "(" .. tostring(p1.x) .. "," .. tostring(p1.y) .. ")"
+end
