@@ -18,13 +18,13 @@ function love.load()
 	for i = 1, PLACEMENT_GRID_COLUMNS do
 		local column = {}
 		for j = 1, PLACEMENT_GRID_ROWS do
-			column[#column + 1] = makeCatGridCell(0, 0)
+			column[#column + 1] = makeCatGridCell(nil, 0)
 		end
 		grid[#grid + 1] = column
 	end
 
 	makeCat(5)
-	placeCatAtPosition(cats[1], p(0, 0))
+	placeCat(cats[1])
 end
 
 function love.draw()
@@ -60,32 +60,52 @@ function love.draw()
 		end
 	end
 
-	local catPoints = cats[1].points
+	local cat = cats[1]
+	local catPoints = cat.points
+	local catPosition = cat.gridPosition
 	for i = 1, #catPoints do
-		local point = catPoints[i]
+		local point = pAdd(catPoints[i], catPosition)
+		local alpha = cat.isPlaced and 1 or 0.7
 		if i == 1 then
-			love.graphics.setColor(255, 255, 255, 255)
+			love.graphics.setColor(255, 255, 255, 255 * alpha)
 		else
-			love.graphics.setColor(255, 255, 255, 150)
+			love.graphics.setColor(180, 180, 180, 255 * alpha)
 		end
 		love.graphics.circle("fill", point.x * 40, point.y * 40, GRID_CELL_SIZE * 0.45)
 	end
 
+	love.graphics.setColor(255, 255, 255, 220)
 	local mousePoint = mouseGridPoint()
-	love.graphics.circle("line", mousePoint.x * GRID_CELL_SIZE, mousePoint.y * GRID_CELL_SIZE, GRID_CELL_SIZE / 2)
+	love.graphics.circle("fill", mousePoint.x * GRID_CELL_SIZE, mousePoint.y * GRID_CELL_SIZE, 5)
 end
 
 function love.update(dt)
-
+	if grabbedCat ~= nil then
+		local mousePoint = mouseGridPoint()
+		local grabPoint = catPositionToGridSpace(grabbedCat.points[grabbedCatSegmentIndex], grabbedCat)
+		if not pEq(mousePoint, grabPoint) then
+			grabbedCat.gridPosition = pAdd(grabbedCat.gridPosition, pSub(mousePoint, grabPoint))
+		end
+	end
 end
 
 function love.keypressed(key)
 	if key == "escape" then love.event.quit() end
-	if key == "left" then
-		currentCat = rotateCat(currentCat, -1)
+	if key == " " then
+		rotateGrabbedCat()
 	end
-	if key == "right" then
-		currentCat = rotateCat(currentCat, 1)
+end
+
+function love.mousepressed(x, y, button)
+	local gridPoint = mouseGridPoint()
+	if grabbedCat == nil then
+		-- TODO: determine whether we're grabbing on the body or ends via findCatAtPosition
+		-- also TODO: clicking on the body should only highlight the cat, should have to release to pick it up
+		pickUpCatAtPosition(gridPoint)
+	else
+		if placeCat(grabbedCat) then -- TODO: feedback if you can't place the cat there
+			grabbedCat = nil
+		end
 	end
 end
 
@@ -112,62 +132,96 @@ function shiftCat(cat, whichEnd, newPosition)
 	local dx, dy = math.abs(newPointInCatSpace.x - currentEndpoint.x), math.abs(newPointInCatSpace.y - currentEndpoint.y)
 	if dx > 1 or dy > 1 or dx + dy > 1 then return false end
 
-	-- TODO: if the cat is on the grid (grid, grid, grid, grid…), update the relevant points to contain the new end and not-contain the former other end
+	if cat.isPlaced then
+		setGridCell(catPositionToGridSpace(newPointInCatSpace, cat), makeCatGridCell(cat, whichEnd))
+	end
 	if whichEnd == 0 then
+		if cat.isPlaced then
+			setGridCell(catPositionToGridSpace(points[#points], cat), makeEmptyCatGridCell())
+		end
 		table.insert(points, 1, newPointInCatSpace)
 		table.remove(points, #points)
 	else
+		if cat.isPlaced then
+			setGridCell(catPositionToGridSpace(points[1], cat), makeEmptyCatGridCell())
+		end
 		table.remove(points, 1)
 		table.insert(points, newPointInCatSpace) -- append
 	end
 
-	-- rearrange things so the head is 0,0 in cat space
+	rearrangeCat()
+
+	return true
+end
+
+-- shift all points and the cat's gridPosition so the head is (0,0)
+function rearrangeCat(cat)
+	local points = cat.points
 	local headOffset = points[1]
 	for i = 1, #points do
 		points[i] = pSub(points[i], headOffset)
 	end
 	cat.gridPosition = pAdd(cat.gridPosition, headOffset)
-
-	return true
 end
 
-function pickUpCatAtPosition(catPosition)
-	local identifier = grid[catPosition.x][catPosition.y].id
-	if identifier == 0 then return 0 end
-	local cat = cats[identifier]
+function pickUpCatAtPosition(gridPosition) -- returns bool
+	local cat, index = findCatAtPosition(gridPosition)
+	if cat == nil then
+		print("no cat found")
+		return false
+	end
 	local catPoints = cat.points
+	if index == 1 or index == #catPoints then
+		print("can't grab by the ends")
+		return false
+	end -- can't pick up by the ends
+
 	for i = 1, #catPoints do
-		local catPoint = catPoints[i]
-		local pointOnGrid = pAdd(catPosition, catPoint)
-		setGridCell(pointOnGrid, makeCatGridCell(0, 0))
+		local pointOnGrid = catPositionToGridSpace(catPoints[i], cat)
+		setGridCell(pointOnGrid, makeEmptyCatGridCell())
 	end
 	cat.isPlaced = false
-
-	return identifier
-end
-
-function placeCatAtPosition(cat, position)
-	if not canPlaceCatAtPosition(cat, position) then return false end
-
-	local catPoints = cat.points
-	for i = 1, #catPoints do
-		local catPoint = catPoints[i]
-		local pointOnGrid = pAdd(position, catPoint)
-		local cellType = (i == 1 and 0 or (i == #catPoints and 1 or 2))
-		setGridCell(pointOnGrid, makeCatGridCell(identifier, cellType))
-	end
-	cat.gridPosition = position
-	cat.isPlaced = true
+	grabbedCat = cat
+	grabbedCatSegmentIndex = index
 
 	return true
 end
 
-function canPlaceCatAtPosition(cat, position)
+function findCatAtPosition(gridPosition) -- returns (cat, segment index)
+	for i = #cats, 1, -1 do -- frontmost first
+		local cat = cats[i]
+		local pointIndex = pointListContainsPoint(cat.points, gridPositionToCatSpace(gridPosition, cat))
+		if pointIndex then
+			return cat, pointIndex
+		end
+	end
+	return nil, nil
+end
+
+function placeCat(cat)
+	if canPlaceCat(cat) then
+		local catPoints = cat.points
+		for i = 1, #catPoints do
+			local pointOnGrid = catPositionToGridSpace(catPoints[i], cat)
+			local cellType = (i == 1 and 0 or (i == #catPoints and 1 or 2))
+			setGridCell(pointOnGrid, makeCatGridCell(cat, cellType))
+		end
+		cat.isPlaced = true
+		return true
+	elseif catIsOffGrid(cat) then
+		cat.isPlaced = true
+		return true
+	end
+
+	return false
+end
+
+function canPlaceCat(cat)
+	local position = cat.gridPosition
 	local catPoints = cat.points
 	for i = 1, #catPoints do
 		local catPoint = catPoints[i]
-		local pointOnGrid = pAdd(position, catPoint)
-		local gridCell = getGridCell(pointOnGrid)
+		local gridCell = getGridCell(catPositionToGridSpace(catPoint, cat))
 		if gridCell == nil or gridCell.id ~= 0 then
 			return false
 		end
@@ -175,9 +229,18 @@ function canPlaceCatAtPosition(cat, position)
 	return true
 end
 
+function catIsOffGrid(cat)
+	local position = cat.gridPosition
+	local points = cat.points
+	for i = 1, #points do
+		if getGridCell(catPositionToGridSpace(points[i], cat)) ~= nil then return false end
+	end
+	return true
+end
+
 -- cat members: points, identifier, gridPosition, isPlaced
 -- TODO: appearance (color / pattern / whatever), time of last movement, etc.
-function makeCat(length)
+function makeCat(length) -- returns cat
 	local identifier = #cats + 1
 	local lastPoint = p(0, 0)
 	local points = { lastPoint }
@@ -219,12 +282,15 @@ function makeCat(length)
 	return cat
 end
 
-function rotateCat(cat, direction) -- direction is 1 for clockwise or -1 for counter
-	local points = cat.points
-	for i = 1, #points do
-		points[i] = pRot(points[i], direction)
+function rotateGrabbedCat()
+	if grabbedCat then
+		local points = grabbedCat.points
+		local aboutPoint = points[grabbedCatSegmentIndex]
+		for i = 1, #points do
+			points[i] = pAdd(pRot(pSub(points[i], aboutPoint), 1), aboutPoint)
+		end
+		rearrangeCat(grabbedCat)
 	end
-	cat.points = points
 end
 
 function gridPositionToCatSpace(gridPosition, cat)
@@ -237,20 +303,24 @@ function catPositionToGridSpace(catPosition, cat)
 	return pAdd(catPosition, catGridPosition)
 end
 
--- cell members: id, type
-function makeCatGridCell(identifier, cellType) -- 0: head, 1: tail, 2: body
+-- cell members: id, type (0: head, 1: tail, 2: body)
+function makeCatGridCell(cat, cellType)
 	local cell = {}
-	cell.id = identifier
+	cell.id = cat ~= nil and cat.identifier or 0
 	cell.type = cellType
 	return cell
 end
 
-function pointListContainsPoint(list, point)
+function makeEmptyCatGridCell()
+	return makeCatGridCell(nil, 0)
+end
+
+function pointListContainsPoint(list, point) -- returns index or nil
 	for i = 1, #list do
-		if pEq(point, list[i]) then return true end
+		if pEq(point, list[i]) then return i end
 	end
 
-	return false
+	return nil
 end
 
 function setGridCell(gridPoint, gridCell)
