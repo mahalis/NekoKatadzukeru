@@ -3,10 +3,10 @@ require "points"
 local grid = {} -- 2D grid of cat IDs
 local cats = {} -- list of cats by ID
 
-local PLACEMENT_GRID_COLUMNS = 7
-local PLACEMENT_GRID_ROWS = 7
+local PLACEMENT_GRID_COLUMNS = 5
+local PLACEMENT_GRID_ROWS = 5
 
-local GRID_CELL_SIZE = 40
+local GRID_CELL_SIZE = 60
 local GRID_CELL_PADDING = 1
 
 local grabbedCat = nil
@@ -15,8 +15,15 @@ local grabbedCatSegmentIndex = 1
 local shiftingCat = nil
 local shiftingCatEnd = 0
 
+local isHighDPI = false
+local catHeadImage = nil
+local catBodyImage = nil
+local catCornerImage = nil
+local catButtImage = nil
+
 function love.load()
 	math.randomseed(os.time())
+	love.graphics.setBackgroundColor(60, 100, 150, 255)
 	
 	for i = 1, PLACEMENT_GRID_COLUMNS do
 		local column = {}
@@ -30,6 +37,18 @@ function love.load()
 	makeCat(7)
 	cats[2].gridPosition = p(7, 2)
 	placeCat(cats[1])
+
+	isHighDPI = (love.window.getPixelScale() > 1)
+	catHeadImage = loadImage("head")
+	catBodyImage = loadImage("body")
+	catCornerImage = loadImage("corner")
+	catButtImage = loadImage("butt")
+end
+
+function loadImage(pathName) -- omit “graphics/” and “.png”
+	local desiredPath = "graphics/" .. pathName .. (isHighDPI and "@2x" or "") .. ".png"
+
+	return love.graphics.newImage(desiredPath)
 end
 
 function love.draw()
@@ -69,23 +88,69 @@ function love.draw()
 		local cat = cats[i]
 		local catPoints = cat.points
 		local catPosition = cat.gridPosition
+		
+		local alpha = cat.isPlaced and 1 or 0.7
+		love.graphics.setColor(255, 255, 255, 255 * alpha)
+
 		for i = 1, #catPoints do
-			local point = pAdd(catPoints[i], catPosition)
-			local alpha = cat.isPlaced and 1 or 0.7
+			local point = catPoints[i]
+			local gridPoint = pAdd(point, catPosition)
+			local centerX, centerY = gridPoint.x * GRID_CELL_SIZE, gridPoint.y * GRID_CELL_SIZE
+			
 			if i == 1 then
-				love.graphics.setColor(255, 255, 255, 255 * alpha)
+				local angle = angleForPointDirection(pSub(catPoints[i + 1], point))
+				drawCenteredImage(catHeadImage, centerX, centerY, imageScale, angle)
 			elseif i == #catPoints then
-				love.graphics.setColor(100, 100, 100, 255 * alpha)
+				local angle = angleForPointDirection(pSub(point, catPoints[i - 1]))
+				drawCenteredImage(catButtImage, centerX, centerY, imageScale, angle)
 			else
-				love.graphics.setColor(180, 180, 180, 255 * alpha)
+				local lastPoint = catPoints[i - 1]
+				local nextPoint = catPoints[i + 1]
+				local image, angle = nil, 0
+				if math.abs(lastPoint.x) == math.abs(nextPoint.x) or math.abs(lastPoint.y) == math.abs(nextPoint.y) then
+					image = catBodyImage
+					angle = angleForPointDirection(pSub(nextPoint, point))
+				else
+					image = catCornerImage
+					local lastDelta = pSub(lastPoint, point)
+					local nextDelta = pSub(nextPoint, point)
+					if pointPairMatches(lastDelta, nextDelta, p(0, -1), p(1, 0)) then
+						angle = 0
+					elseif pointPairMatches(lastDelta, nextDelta, p(1, 0), p(0, 1)) then
+						angle = 0.25
+					elseif pointPairMatches(lastDelta, nextDelta, p(0, 1), p(-1, 0)) then
+						angle = 0.5
+					else
+						angle = 0.75
+					end
+				end
+				drawCenteredImage(image, centerX, centerY, imageScale, angle)
 			end
-			love.graphics.circle("fill", point.x * 40, point.y * 40, GRID_CELL_SIZE * 0.45)
+			
 		end
 	end
 
 	love.graphics.setColor(255, 255, 255, 220)
 	local mousePoint = mouseGridPoint()
 	love.graphics.circle("fill", mousePoint.x * GRID_CELL_SIZE, mousePoint.y * GRID_CELL_SIZE, 5)
+end
+
+function pointPairMatches(p1, p2, testPoint1, testPoint2)
+	return (pEq(p1, testPoint1) and pEq(p2, testPoint2)) or (pEq(p1, testPoint2) and pEq(p2, testPoint1))
+end
+
+function angleForPointDirection(direction)
+	if pEq(direction, p(0, 1)) then return 0 end
+	if pEq(direction, p(-1, 0)) then return 0.25 end
+	if pEq(direction, p(0, -1)) then return 0.5 end
+	if pEq(direction, p(1, 0)) then return 0.75 end
+end
+
+function drawCenteredImage(image, x, y, scale, angle)
+	local w, h = image:getWidth(), image:getHeight()
+	scale = scale or 1
+	angle = angle or 0
+	love.graphics.draw(image, x, y, angle * math.pi * 2, scale, scale, w / 2, h / 2)
 end
 
 function love.update(dt)
