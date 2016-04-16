@@ -19,6 +19,11 @@ function pEq(p1, p2)
 	return (p1.x == p2.x and p1.y == p2.y)
 end
 
+function pDist(p1, p2)
+	local dx, dy = p1.x - p2.x, p1.y - p2.y
+	return math.sqrt(dx * dx + dy * dy)
+end
+
 function pStr(p1)
 	if p1 == nil then
 		return "NIL"

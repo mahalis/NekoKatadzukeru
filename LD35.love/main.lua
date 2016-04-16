@@ -27,6 +27,8 @@ function love.load()
 	end
 
 	makeCat(5)
+	makeCat(7)
+	cats[2].gridPosition = p(7, 2)
 	placeCat(cats[1])
 end
 
@@ -63,20 +65,22 @@ function love.draw()
 		end
 	end
 
-	local cat = cats[1]
-	local catPoints = cat.points
-	local catPosition = cat.gridPosition
-	for i = 1, #catPoints do
-		local point = pAdd(catPoints[i], catPosition)
-		local alpha = cat.isPlaced and 1 or 0.7
-		if i == 1 then
-			love.graphics.setColor(255, 255, 255, 255 * alpha)
-		elseif i == #catPoints then
-			love.graphics.setColor(100, 100, 100, 255 * alpha)
-		else
-			love.graphics.setColor(180, 180, 180, 255 * alpha)
+	for i = 1, #cats do
+		local cat = cats[i]
+		local catPoints = cat.points
+		local catPosition = cat.gridPosition
+		for i = 1, #catPoints do
+			local point = pAdd(catPoints[i], catPosition)
+			local alpha = cat.isPlaced and 1 or 0.7
+			if i == 1 then
+				love.graphics.setColor(255, 255, 255, 255 * alpha)
+			elseif i == #catPoints then
+				love.graphics.setColor(100, 100, 100, 255 * alpha)
+			else
+				love.graphics.setColor(180, 180, 180, 255 * alpha)
+			end
+			love.graphics.circle("fill", point.x * 40, point.y * 40, GRID_CELL_SIZE * 0.45)
 		end
-		love.graphics.circle("fill", point.x * 40, point.y * 40, GRID_CELL_SIZE * 0.45)
 	end
 
 	love.graphics.setColor(255, 255, 255, 220)
@@ -95,9 +99,8 @@ function love.update(dt)
 	if shiftingCat ~= nil then
 		local catPoints = shiftingCat.points
 		local endPoint = catPositionToGridSpace(catPoints[shiftingCatEnd == 0 and 1 or #catPoints], shiftingCat)
-		local isOffGrid = catIsOffGrid(shiftingCat)
-		local gridCell = getGridCell(mousePoint)
-		if not pEq(mousePoint, endPoint) and ((gridCell == nil) == isOffGrid) then
+		
+		if not pEq(mousePoint, endPoint) then
 			shiftCat(shiftingCat, shiftingCatEnd, mousePoint)
 		end
 	end
@@ -150,16 +153,32 @@ function mouseScreenPosition()
 	return mouseX, mouseY
 end
 
--- end is 0 or 1 for head or tail (2 is right out); newPosition must be a position on the grid adjacent to the specified end
-function shiftCat(cat, whichEnd, newPosition)
+-- end is 0 or 1 for head or tail (2 is right out)
+function shiftCat(cat, whichEnd, gridPosition)
 	local points = cat.points
-	local newPointInCatSpace = gridPositionToCatSpace(newPosition, cat)
-	if pointListContainsPoint(points, newPointInCatSpace) then return false end
-	if findCatAtPosition(newPosition) then return false end
-
+	local newPointInCatSpace = gridPositionToCatSpace(gridPosition, cat)
 	local currentEndpoint = points[whichEnd == 0 and 1 or #points]
-	local dx, dy = math.abs(newPointInCatSpace.x - currentEndpoint.x), math.abs(newPointInCatSpace.y - currentEndpoint.y)
-	if dx > 1 or dy > 1 or dx + dy > 1 then return false end
+
+	local potentialPoints = neighborsOfPoint(currentEndpoint)
+	local closestPotentialPoint, closestDistance = nil, nil
+	for i = 1, #potentialPoints do
+		local distance = pDist(potentialPoints[i], newPointInCatSpace)
+		if closestDistance == nil or distance < closestDistance then
+			closestPotentialPoint = potentialPoints[i]
+			closestDistance = distance
+		end
+	end
+
+	newPointInCatSpace = closestPotentialPoint
+	gridPosition = catPositionToGridSpace(newPointInCatSpace, cat)
+
+	if pointListContainsPoint(points, newPointInCatSpace) then return false end
+
+	if findCatAtPosition(gridPosition) then return false end
+
+	local isOffGrid = catIsOffGrid(cat)
+	local gridCell = getGridCell(catPositionToGridSpace(newPointInCatSpace, cat))
+	if (gridCell == nil) ~= isOffGrid then return false end
 
 	if whichEnd == 0 then
 		setGridCell(catPositionToGridSpace(points[#points], cat), makeEmptyCatGridCell())
@@ -272,13 +291,8 @@ function makeCat(length) -- returns cat
 	local lastPoint = p(0, 0)
 	local points = { lastPoint }
 	
-	local availableDirections = { p(-1, 0), p(1, 0), p(0, -1), p(0, 1) }
-
 	for i = 1, length - 1 do
-		local potentialPoints = {}
-		for potentialIndex = 1, 4 do
-			potentialPoints[#potentialPoints + 1] = pAdd(lastPoint, availableDirections[potentialIndex])
-		end
+		local potentialPoints = neighborsOfPoint(lastPoint)
 		if i > 1 then
 			for j = 1, i - 1 do
 				local existingPoint = points[j]
@@ -307,6 +321,15 @@ function makeCat(length) -- returns cat
 	cats[identifier] = cat
 
 	return cat
+end
+
+function neighborsOfPoint(point)
+	local availableDirections = { p(-1, 0), p(1, 0), p(0, -1), p(0, 1) }
+	local neighbors = {}
+	for i = 1, 4 do
+		neighbors[#neighbors + 1] = pAdd(point, availableDirections[i])
+	end
+	return neighbors
 end
 
 function rotateGrabbedCat()
