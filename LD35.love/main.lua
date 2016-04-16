@@ -24,7 +24,7 @@ function love.load()
 	end
 
 	makeCat(5)
-	placeCatAtPosition(cats[1], p(4, 2))
+	placeCatAtPosition(cats[1], p(0, 0))
 end
 
 function love.draw()
@@ -43,7 +43,20 @@ function love.draw()
 		for j = 1, PLACEMENT_GRID_ROWS do
 			local cell = column[j]
 			local cellType = cell.type
-			love.graphics.rectangle("line", gridStartX + (i - 1) * GRID_CELL_SIZE + GRID_CELL_PADDING, gridStartY + (j - 1) * GRID_CELL_SIZE + GRID_CELL_PADDING, GRID_CELL_SIZE - 2 * GRID_CELL_PADDING, GRID_CELL_SIZE - 2 * GRID_CELL_PADDING)
+			local cellOriginX = gridStartX + (i - 1) * GRID_CELL_SIZE
+			local cellOriginY = gridStartY + (j - 1) * GRID_CELL_SIZE
+			if cell.id ~= 0 then
+				if cellType == 0 then
+					love.graphics.setColor(100, 180, 255, 180)
+				elseif cellType == 1 then
+					love.graphics.setColor(255, 180, 100, 180)
+				else
+					love.graphics.setColor(255, 255, 255, 100)
+				end
+				love.graphics.rectangle("fill", cellOriginX, cellOriginY, GRID_CELL_SIZE, GRID_CELL_SIZE)
+			end
+			love.graphics.setColor(255, 255, 255, 255)
+			love.graphics.rectangle("line", cellOriginX + GRID_CELL_PADDING, cellOriginY + GRID_CELL_PADDING, GRID_CELL_SIZE - 2 * GRID_CELL_PADDING, GRID_CELL_SIZE - 2 * GRID_CELL_PADDING)
 		end
 	end
 
@@ -126,7 +139,7 @@ function pickUpCatAtPosition(catPosition)
 	for i = 1, #catPoints do
 		local catPoint = catPoints[i]
 		local pointOnGrid = pAdd(catPosition, catPoint)
-		grid[pointOnGrid.x][pointOnGrid.y] = makeCatGridCell(0, 0)
+		setGridCell(pointOnGrid, makeCatGridCell(0, 0))
 	end
 	cat.isPlaced = false
 
@@ -141,7 +154,7 @@ function placeCatAtPosition(cat, position)
 		local catPoint = catPoints[i]
 		local pointOnGrid = pAdd(position, catPoint)
 		local cellType = (i == 1 and 0 or (i == #catPoints and 1 or 2))
-		grid[pointOnGrid.x][pointOnGrid.y] = makeCatGridCell(identifier, cellType)
+		setGridCell(pointOnGrid, makeCatGridCell(identifier, cellType))
 	end
 	cat.gridPosition = position
 	cat.isPlaced = true
@@ -154,7 +167,8 @@ function canPlaceCatAtPosition(cat, position)
 	for i = 1, #catPoints do
 		local catPoint = catPoints[i]
 		local pointOnGrid = pAdd(position, catPoint)
-		if grid[pointOnGrid.x][pointOnGrid.y].id ~= 0 then
+		local gridCell = getGridCell(pointOnGrid)
+		if gridCell == nil or gridCell.id ~= 0 then
 			return false
 		end
 	end
@@ -237,6 +251,32 @@ function pointListContainsPoint(list, point)
 	end
 
 	return false
+end
+
+function setGridCell(gridPoint, gridCell)
+	local storagePoint = gridStoragePointForPoint(gridPoint)
+	if storagePoint then
+		grid[storagePoint.x][storagePoint.y] = gridCell
+		return true
+	end
+
+	return false
+end
+
+function getGridCell(gridPoint)
+	local storagePoint = gridStoragePointForPoint(gridPoint)
+	if storagePoint then
+		return grid[storagePoint.x][storagePoint.y]
+	end
+	return nil
+end
+
+function gridStoragePointForPoint(gridPoint)
+	local storageX = gridPoint.x + math.ceil(PLACEMENT_GRID_COLUMNS / 2)
+	local storageY = gridPoint.y + math.ceil(PLACEMENT_GRID_ROWS / 2)
+	if storageX < 1 or storageX > PLACEMENT_GRID_COLUMNS or storageY < 1 or storageY > PLACEMENT_GRID_ROWS then return nil end
+
+	return p(storageX, storageY)
 end
 
 function round(x)
