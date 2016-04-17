@@ -225,10 +225,6 @@ function love.mousepressed(x, y, button)
 	end
 end
 
-function love.mousereleased(x, y, button)
-	
-end
-
 function mouseGridPoint()
 	local mouseX, mouseY = mouseScreenPosition()
 	return p(round(mouseX / GRID_CELL_SIZE), round(mouseY / GRID_CELL_SIZE))
@@ -312,11 +308,22 @@ function pickUpCatAtPosition(gridPosition) -- returns bool
 		local pointOnGrid = catPositionToGridSpace(catPoints[i], cat)
 		setGridCell(pointOnGrid, makeEmptyCatGridCell())
 	end
+
+	cat.isOnGrid = false
 	cat.isPlaced = false
 	grabbedCat = cat
 	grabbedCatSegmentIndex = index
 
 	return true
+end
+
+function getRemainingGridSpace()
+	local remainingGridSpace = PLACEMENT_GRID_COLUMNS * PLACEMENT_GRID_ROWS
+	for i = 1, #cats do
+		local cat = cats[i]
+		if cat.isOnGrid then remainingGridSpace = remainingGridSpace - #(cat.points) end
+	end
+	return math.max(0, remainingGridSpace)
 end
 
 function findCatAtPosition(gridPosition) -- returns (cat, segment index)
@@ -333,7 +340,12 @@ end
 function attemptToPlaceCat(cat)
 	if canPlaceCatOnGrid(cat) then
 		setGridCellsForCat(cat)
+		cat.isOnGrid = true
 		finishCatPlacement(cat)
+		
+		if getRemainingGridSpace() == 0 then
+			-- TODO: trigger next box
+		end
 	
 		return true
 	elseif catIsInValidOffGridPosition(cat) then
@@ -385,15 +397,25 @@ function catIsInValidOffGridPosition(cat)
 	local points = cat.points
 	for i = 1, #points do
 		local gridPosition = catPositionToGridSpace(points[i], cat)
+		-- TODO: check other cats, can't overlap them
 		if not isValidOffGridPoint(gridPosition) then return false end
 	end
 	return true
 end
 
--- cat members: points, identifier, gridPosition, isPlaced
+function getNextCatLengthConstraint()
+	local remainingGridSpace = getRemainingGridSpace()
+	local minLength, maxLength = 3, 7
+	if remainingGridSpace == 6 then maxLength = 3 end
+	if remainingGridSpace < 5 then maxLength = math.max(minLength, remainingGridSpace) end
+	return minLength, maxLength
+end
+
+-- cat members: points, identifier, gridPosition, isPlaced, isOnGrid
 -- TODO: appearance (color / pattern / whatever), time of last movement, etc.
 function makeCat() -- returns cat
-	local length = math.random(3, 7)
+	local minLength, maxLength = getNextCatLengthConstraint()
+	local length = math.random(minLength, maxLength)
 	local identifier = #cats + 1
 	local lastPoint = p(0, 0)
 	local points = { lastPoint }
@@ -432,6 +454,7 @@ function makeCat() -- returns cat
 	cat.identifier = identifier
 	cat.isPlaced = true
 	cat.gridPosition = p(xExtent > 0 and -11 or -10, 0)
+	cat.isOnGrid = false
 
 	cats[identifier] = cat
 	catOccupyingTube = cat
