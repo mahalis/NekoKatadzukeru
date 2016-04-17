@@ -36,6 +36,12 @@ local boxIconImage = nil
 local lidImage = nil
 local notPlayingBackgroundImage = nil
 
+local titleImage = nil
+local subtitleImage = nil
+local instruction1Image = nil
+local instruction2Image = nil
+local beginImage = nil
+
 local elapsedTime = 0
 local lastBoxCompletedTime = nil
 
@@ -89,6 +95,12 @@ function love.load()
 	boxIconImage = loadImage("box icon")
 	lidImage = loadImage("lid")
 	notPlayingBackgroundImage = loadImage("not playing")
+
+	titleImage = loadImage("text/title")
+	subtitleImage = loadImage("text/subtitle")
+	instruction1Image = loadImage("text/instruction 1")
+	instruction2Image = loadImage("text/instruction 2")
+	beginImage = loadImage("text/begin")
 
 	backgroundMusic = love.audio.newSource("sound/background.mp3")
 	backgroundMusic:setLooping(true)
@@ -271,9 +283,18 @@ function love.draw()
 		end
 	end
 	if notPlayingVisibility > 0 then
-		local scissorHeight = h * pixelScale
-		love.graphics.setScissor(NOT_PLAYING_SCREEN_INSET_X * pixelScale, math.pow(1 - notPlayingVisibility, 4) * scissorHeight + NOT_PLAYING_SCREEN_INSET_Y * pixelScale, (w - 2 * NOT_PLAYING_SCREEN_INSET_X) * pixelScale, scissorHeight - 2 * NOT_PLAYING_SCREEN_INSET_Y * pixelScale)
+		local offsetY = h * math.pow(1 - notPlayingVisibility, 4)
+		love.graphics.setScissor(NOT_PLAYING_SCREEN_INSET_X * pixelScale, (offsetY + NOT_PLAYING_SCREEN_INSET_Y) * pixelScale, (w - 2 * NOT_PLAYING_SCREEN_INSET_X) * pixelScale, (h - 2 * NOT_PLAYING_SCREEN_INSET_Y) * pixelScale)
 		drawCenteredImage(notPlayingBackgroundImage, w / 2, h / 2, imageScale)
+		love.graphics.translate(w / 2, offsetY)
+		if not gameOver then
+			drawCenteredImage(titleImage, 0, 130, imageScale)
+			drawCenteredImage(subtitleImage, 0, 212, imageScale)
+			drawCenteredImage(instruction1Image, 0, 330, imageScale)
+			drawCenteredImage(instruction2Image, 0, 420, imageScale)
+			drawCenteredImage(beginImage, 0, 500, imageScale)
+		else
+		end
 		
 		love.graphics.setScissor()
 	end
