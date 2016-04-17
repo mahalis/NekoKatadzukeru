@@ -2,6 +2,7 @@ require "points"
 
 local grid = {} -- 2D grid of cat IDs
 local cats = {} -- list of cats by ID
+local justBoxedCats = {}
 
 local PLACEMENT_GRID_COLUMNS = 5
 local PLACEMENT_GRID_ROWS = 5
@@ -36,14 +37,6 @@ local elapsedTime = 0
 function love.load()
 	math.randomseed(os.time())
 	love.graphics.setBackgroundColor(60, 100, 150, 255)
-	
-	for i = 1, PLACEMENT_GRID_COLUMNS do
-		local column = {}
-		for j = 1, PLACEMENT_GRID_ROWS do
-			column[#column + 1] = makeCatGridCell(nil, 0)
-		end
-		grid[#grid + 1] = column
-	end
 
 	isHighDPI = (love.window.getPixelScale() > 1)
 	catHeadImage = loadImage("head")
@@ -63,12 +56,46 @@ function love.load()
 	backgroundMusic:play()
 
 	love.mouse.setVisible(false)
+
+	reset()
 end
 
 function loadImage(pathName) -- omit “graphics/” and “.png”
 	local desiredPath = "graphics/" .. pathName .. (isHighDPI and "@2x" or "") .. ".png"
 
 	return love.graphics.newImage(desiredPath)
+end
+
+function reset()
+	clearGrid()
+	makeCat()
+end
+
+function clearGrid()
+	grid = {}
+	for i = 1, PLACEMENT_GRID_COLUMNS do
+		local column = {}
+		for j = 1, PLACEMENT_GRID_ROWS do
+			column[#column + 1] = makeCatGridCell(nil, 0)
+		end
+		grid[#grid + 1] = column
+	end
+end
+
+function boxGridCats()
+	clearGrid()
+	local offGridCats = {}
+	justBoxedCats = {}
+	for i = 1, #cats do
+		local cat = cats[i]
+		if cat.isOnGrid then
+			justBoxedCats[#justBoxedCats + 1] = cat
+		else
+			offGridCats[#offGridCats + 1] = cat
+			cat.identifier = #offGridCats
+		end
+	end
+	cats = offGridCats
 end
 
 function love.draw()
@@ -181,9 +208,6 @@ function love.update(dt)
 			shiftCat(shiftingCat, shiftingCatEnd, mousePoint)
 		end
 	end
-	if catOccupyingTube == nil then
-		makeCat() -- TODO: delay, animation, etc.
-	end
 end
 
 function love.keypressed(key)
@@ -198,7 +222,7 @@ function love.mousepressed(x, y, button)
 	if grabbedCat == nil and shiftingCat == nil then
 		local cat, segment = findCatAtPosition(gridPoint)
 		if cat then
-			if segment == 1 or segment == #cat.points then
+			if (segment == 1 or segment == #cat.points) and not (cat == catOccupyingTube) then
 				shiftingCat = cat
 				shiftingCatEnd = (segment == 1) and 0 or 1
 			else
@@ -289,10 +313,6 @@ function pickUpCatAtPosition(gridPosition) -- returns bool
 		return false
 	end
 	local catPoints = cat.points
-	if index == 1 or index == #catPoints then
-		print("can't grab by the ends")
-		return false
-	end -- can't pick up by the ends
 
 	for i = 1, #catPoints do
 		local pointOnGrid = catPositionToGridSpace(catPoints[i], cat)
@@ -334,7 +354,11 @@ function attemptToPlaceCat(cat)
 		finishCatPlacement(cat)
 		
 		if getRemainingGridSpace() == 0 then
+			boxGridCats()
 			-- TODO: trigger next box
+		end
+		if catOccupyingTube == nil then
+			makeCat()
 		end
 	
 		return true
@@ -396,8 +420,12 @@ end
 function getNextCatLengthConstraint()
 	local remainingGridSpace = getRemainingGridSpace()
 	local minLength, maxLength = 3, 7
+	if remainingGridSpace == 7 then maxLength = 4 end
 	if remainingGridSpace == 6 then maxLength = 3 end
-	if remainingGridSpace < 5 then maxLength = math.max(minLength, remainingGridSpace) end
+	if remainingGridSpace < 6 then
+		minLength = math.max(minLength, remainingGridSpace)
+		maxLength = minLength
+	end
 	return minLength, maxLength
 end
 
