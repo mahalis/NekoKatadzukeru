@@ -49,7 +49,17 @@ local BOX_OUT_DURATION = 0.5
 local BOX_IN_DURATION = BOX_OUT_DURATION
 local BOX_TOTAL_DURATION = BOX_LID_DROP_DURATION + BOX_OUT_DURATION + BOX_IN_DURATION
 
+local MINIMUM_MEOW_INTERVAL = 2
+local MEOW_CHANCE = 0.6
+
 local uiFont = nil
+local catSounds = {}
+local tubeSound = nil
+local pickSound = nil
+local placeSound = nil
+local shiftSound = nil
+local successSound = nil
+local failureSound = nil
 
 function love.load()
 	math.randomseed(os.time())
@@ -76,6 +86,16 @@ function love.load()
 	backgroundMusic:play()
 
 	uiFont = love.graphics.newFont("font/weblysleekuisl.ttf", 36)
+
+	for i = 1, 7 do
+		catSounds[i] = love.audio.newSource("sound/cat " .. tostring(i) .. ".wav", "static")
+	end
+	shiftSound = love.audio.newSource("sound/shift.wav", "static")
+	tubeSound = love.audio.newSource("sound/tube 2.wav", "static")
+	placeSound = love.audio.newSource("sound/place.wav", "static")
+	pickSound = love.audio.newSource("sound/pick.wav", "static")
+	successSound = love.audio.newSource("sound/success.wav", "static")
+	failureSound = love.audio.newSource("sound/failure.wav", "static")
 
 	love.mouse.setVisible(false)
 
@@ -136,6 +156,8 @@ function boxGridCats()
 	lastBoxCompletedTime = elapsedTime
 	thisBoxStartedTime = lastBoxCompletedTime + BOX_TOTAL_DURATION
 	setScore(score + 1)
+	successSound:rewind()
+	successSound:play()
 end
 
 function start()
@@ -155,6 +177,8 @@ function endGame()
 	gameOverTime = elapsedTime
 	grabbedCat = nil
 	shiftingCat = nil
+	failureSound:rewind()
+	failureSound:play()
 end
 
 function love.draw()
@@ -226,12 +250,15 @@ function love.draw()
 	drawText("0:" .. (remainingTime < 10 and "0" or "" ) .. tostring(remainingTime), w - 280, 44, true)
 
 	if not playing then -- TODO: support animating out or (playing and elapsedTime < thisBoxStartedTime + TITLE_CARD_ANIMATION_DELAY)
+		-- TODO: crop blur with scissor rect (which, notably, needs to be in window coordinates — ignores transforms)
+		-- love.graphics.setScissor(0, 0, w * pixelScale, h * pixelScale / 2)
 		if gameOver then
 			love.graphics.setColor(200, 0, 0, 200)
 		else
 			love.graphics.setColor(0, 200, 0, 200)
 		end
 		love.graphics.rectangle("fill", 0, 0, w, h)
+		love.graphics.setScissor()
 	end
 end
 
@@ -338,6 +365,11 @@ function love.keypressed(key)
 	if key == "escape" then love.event.quit() end
 	if key == " " then
 		rotateGrabbedCat()
+		shiftSound:rewind()
+		shiftSound:play()
+	end
+	if key == "q" then
+		boxGridCats()
 	end
 end
 
@@ -428,6 +460,11 @@ function shiftCat(cat, whichEnd, gridPosition)
 	rearrangeCat(cat)
 	setGridCellsForCat(cat)
 
+	shiftSound:rewind()
+	shiftSound:play()
+
+	maybeMeow(cat)
+
 	return true
 end
 
@@ -460,6 +497,9 @@ function pickUpCatAtPosition(gridPosition) -- returns bool
 	cat.isPlaced = false
 	grabbedCat = cat
 	grabbedCatSegmentIndex = index
+
+	pickSound:rewind()
+	pickSound:play()
 
 	return true
 end
@@ -513,6 +553,20 @@ function finishCatPlacement(cat)
 		else
 			makeCat()
 		end
+	end
+	placeSound:rewind()
+	placeSound:play()
+
+	maybeMeow(cat)
+end
+
+function maybeMeow(cat)
+	if math.random() < MEOW_CHANCE and elapsedTime > cat.lastMeow + MINIMUM_MEOW_INTERVAL then
+		local meow = catSounds[math.random(#catSounds)]
+		meow:rewind()
+		meow:setPitch(1.7 + math.random() * 0.5)
+		meow:play()
+		cat.lastMeow = elapsedTime
 	end
 end
 
@@ -570,7 +624,7 @@ function getNextCatLengthConstraint()
 	return minLength, maxLength
 end
 
--- cat members: points, identifier, gridPosition, isPlaced, isOnGrid
+-- cat members: points, identifier, gridPosition, isPlaced, isOnGrid, lastMeow
 -- TODO: appearance (color / pattern / whatever), time of last movement, etc.
 function makeCat() -- returns cat
 	local minLength, maxLength = getNextCatLengthConstraint()
@@ -614,10 +668,14 @@ function makeCat() -- returns cat
 	cat.isPlaced = true
 	cat.gridPosition = p(xExtent > 0 and -11 or -10, 0)
 	cat.isOnGrid = false
+	cat.lastMeow = -MINIMUM_MEOW_INTERVAL
 
 	cats[identifier] = cat
 	catOccupyingTube = cat
 	catSpawnedTime = elapsedTime
+
+	tubeSound:rewind()
+	tubeSound:play()
 
 	return cat
 end
