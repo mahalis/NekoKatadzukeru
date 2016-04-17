@@ -3,12 +3,12 @@ require "points"
 local grid = {} -- 2D grid of cat IDs
 local cats = {} -- list of cats by ID
 
-local PLACEMENT_GRID_COLUMNS = 11
+local PLACEMENT_GRID_COLUMNS = 5
 local PLACEMENT_GRID_ROWS = 5
 
 local GRID_CELL_SIZE = 60
 local GRID_CELL_PADDING = 1
-local GRID_OFFSET_X = 85 -- 0,0 on the grid is this many points offset from the center of the screen
+local GRID_OFFSET_X = 265 -- 0,0 on the grid is this many points offset from the center of the screen
 
 local grabbedCat = nil
 local grabbedCatSegmentIndex = 1
@@ -64,26 +64,24 @@ function love.draw()
 
 	local gridStartX, gridStartY = -PLACEMENT_GRID_COLUMNS * GRID_CELL_SIZE / 2, -PLACEMENT_GRID_ROWS * GRID_CELL_SIZE / 2
 	for i = 1, PLACEMENT_GRID_COLUMNS do
-		if i ~= math.ceil(PLACEMENT_GRID_COLUMNS / 2) then
-			local column = grid[i]
-			for j = 1, PLACEMENT_GRID_ROWS do
-				local cell = column[j]
-				local cellType = cell.type
-				local cellOriginX = gridStartX + (i - 1) * GRID_CELL_SIZE
-				local cellOriginY = gridStartY + (j - 1) * GRID_CELL_SIZE
-				if cell.id ~= 0 then
-					if cellType == 0 then
-						love.graphics.setColor(100, 180, 255, 180)
-					elseif cellType == 1 then
-						love.graphics.setColor(255, 180, 100, 180)
-					else
-						love.graphics.setColor(255, 255, 255, 100)
-					end
-					love.graphics.rectangle("fill", cellOriginX, cellOriginY, GRID_CELL_SIZE, GRID_CELL_SIZE)
+		local column = grid[i]
+		for j = 1, PLACEMENT_GRID_ROWS do
+			local cell = column[j]
+			local cellType = cell.type
+			local cellOriginX = gridStartX + (i - 1) * GRID_CELL_SIZE
+			local cellOriginY = gridStartY + (j - 1) * GRID_CELL_SIZE
+			if cell.id ~= 0 then
+				if cellType == 0 then
+					love.graphics.setColor(100, 180, 255, 180)
+				elseif cellType == 1 then
+					love.graphics.setColor(255, 180, 100, 180)
+				else
+					love.graphics.setColor(255, 255, 255, 100)
 				end
-				love.graphics.setColor(255, 255, 255, 255)
-				love.graphics.rectangle("line", cellOriginX + GRID_CELL_PADDING, cellOriginY + GRID_CELL_PADDING, GRID_CELL_SIZE - 2 * GRID_CELL_PADDING, GRID_CELL_SIZE - 2 * GRID_CELL_PADDING)
+				love.graphics.rectangle("fill", cellOriginX, cellOriginY, GRID_CELL_SIZE, GRID_CELL_SIZE)
 			end
+			love.graphics.setColor(255, 255, 255, 255)
+			love.graphics.rectangle("line", cellOriginX + GRID_CELL_PADDING, cellOriginY + GRID_CELL_PADDING, GRID_CELL_SIZE - 2 * GRID_CELL_PADDING, GRID_CELL_SIZE - 2 * GRID_CELL_PADDING)
 		end
 	end
 
@@ -463,11 +461,9 @@ function setGridCell(gridPoint, gridCell)
 end
 
 function getGridCell(gridPoint)
-	if gridPoint.x ~= 0 then
-		local storagePoint = gridStoragePointForPoint(gridPoint)
-		if storagePoint then
-			return grid[storagePoint.x][storagePoint.y]
-		end
+	local storagePoint = gridStoragePointForPoint(gridPoint)
+	if storagePoint then
+		return grid[storagePoint.x][storagePoint.y]
 	end
 	return nil
 end
