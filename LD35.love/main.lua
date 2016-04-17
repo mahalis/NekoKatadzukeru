@@ -358,9 +358,9 @@ function makeCat(length) -- returns cat
 	local identifier = #cats + 1
 	local lastPoint = p(0, 0)
 	local points = { lastPoint }
-	
+	local hasGoneLeft, hasGoneRight = false, false
 	for i = 1, length - 1 do
-		local potentialPoints = neighborsOfPoint(lastPoint)
+		local potentialPoints = neighborsOfPoint(lastPoint, hasGoneLeft, hasGoneRight)
 		if i > 1 then
 			for j = 1, i - 1 do
 				local existingPoint = points[j]
@@ -373,8 +373,11 @@ function makeCat(length) -- returns cat
 			end
 		end
 		if #potentialPoints > 0 then
-			lastPoint = potentialPoints[math.random(#potentialPoints)]
-			points[#points + 1] = lastPoint
+			local newPoint = potentialPoints[math.random(#potentialPoints)]
+			if newPoint.x < lastPoint.x then hasGoneLeft = true end
+			if newPoint.x > lastPoint.x then hasGoneRight = true end
+			points[#points + 1] = newPoint
+			lastPoint = newPoint
 		else
 			break
 		end
@@ -391,10 +394,18 @@ function makeCat(length) -- returns cat
 	return cat
 end
 
-function neighborsOfPoint(point)
-	local availableDirections = { p(-1, 0), p(1, 0), p(0, -1), p(0, 1) }
+function neighborsOfPoint(point, excludeLeft, excludeRight)
+	local availableDirections = { p(0, -1), p(0, 1) }
+	
+	if not excludeRight then
+		table.insert(availableDirections, p(1, 0))
+	end
+	if not excludeLeft then
+		table.insert(availableDirections, p(-1, 0))
+	end
+
 	local neighbors = {}
-	for i = 1, 4 do
+	for i = 1, #availableDirections do
 		neighbors[#neighbors + 1] = pAdd(point, availableDirections[i])
 	end
 	return neighbors
