@@ -33,6 +33,7 @@ local handImageGrabby = nil
 local boxImage = nil
 local timerIconImage = nil
 local boxIconImage = nil
+local lidImage = nil
 
 local elapsedTime = 0
 local lastBoxCompletedTime = nil
@@ -43,6 +44,10 @@ local thisBoxStartedTime = nil
 local catSpawnedTime = nil
 
 local CAT_TUBE_APPEAR_DURATION = 0.7
+local BOX_LID_DROP_DURATION = 0.6
+local BOX_OUT_DURATION = 0.5
+local BOX_IN_DURATION = BOX_OUT_DURATION
+local BOX_TOTAL_DURATION = BOX_LID_DROP_DURATION + BOX_OUT_DURATION + BOX_IN_DURATION
 
 local uiFont = nil
 
@@ -64,6 +69,7 @@ function love.load()
 	boxImage = loadImage("box")
 	timerIconImage = loadImage("timer")
 	boxIconImage = loadImage("box icon")
+	lidImage = loadImage("lid")
 
 	backgroundMusic = love.audio.newSource("sound/background.mp3")
 	backgroundMusic:setLooping(true)
@@ -128,7 +134,7 @@ function boxGridCats()
 	cats = offGridCats
 
 	lastBoxCompletedTime = elapsedTime
-	thisBoxStartedTime = lastBoxCompletedTime
+	thisBoxStartedTime = lastBoxCompletedTime + BOX_TOTAL_DURATION
 	setScore(score + 1)
 end
 
@@ -169,8 +175,26 @@ function love.draw()
 	local tubeCenterX = -GRID_CELL_SIZE * 10.5
 	drawCenteredImage(tubeImage, tubeCenterX, 0, imageScale)
 
+	local animatingBoxOut = (lastBoxCompletedTime ~= nil and elapsedTime < lastBoxCompletedTime + BOX_TOTAL_DURATION)
+	local boxX = 0
+	if animatingBoxOut then
+		boxX = 400 * math.pow(math.max(0, math.min(1, (elapsedTime - (lastBoxCompletedTime + BOX_LID_DROP_DURATION)) / BOX_OUT_DURATION)), 2)
+	end
+	drawCenteredImage(boxImage, boxX, 0, imageScale)
 
-	drawCenteredImage(boxImage, 0, 0, imageScale)
+	if animatingBoxOut then
+		love.graphics.push()
+		love.graphics.translate(boxX, 0)
+		for i = 1, #justBoxedCats do
+			drawCat(justBoxedCats[i], imageScale)
+		end
+		local lidProgress = math.pow(1 - math.max(0, math.min(1, (elapsedTime - lastBoxCompletedTime) / BOX_LID_DROP_DURATION)), 3)
+		drawCenteredImage(lidImage, 0, -480 * lidProgress, imageScale)
+		love.graphics.pop()
+
+		local boxInProgress = math.pow(1 - math.max(0, math.min(1, (elapsedTime - (lastBoxCompletedTime + BOX_LID_DROP_DURATION + BOX_OUT_DURATION)) / BOX_IN_DURATION)), 4)
+		drawCenteredImage(boxImage, 0, 480 * boxInProgress, imageScale)
+	end
 
 	for i = 1, #cats do
 		local cat = cats[i]
@@ -198,7 +222,7 @@ function love.draw()
 	drawCenteredImage(boxIconImage, w - 64, 68, imageScale)
 	drawText(tostring(score), w - 100, 44, true)
 	drawCenteredImage(timerIconImage, w - 240, 68, imageScale)
-	local remainingTime = round(currentTimer - (playing and (elapsedTime - thisBoxStartedTime) or 0))
+	local remainingTime = math.min(currentTimer, round(currentTimer - (playing and (elapsedTime - thisBoxStartedTime) or 0)))
 	drawText("0:" .. (remainingTime < 10 and "0" or "" ) .. tostring(remainingTime), w - 280, 44, true)
 
 	if not playing then -- TODO: support animating out or (playing and elapsedTime < thisBoxStartedTime + TITLE_CARD_ANIMATION_DELAY)
