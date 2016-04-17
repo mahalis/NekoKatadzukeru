@@ -34,6 +34,7 @@ local boxImage = nil
 local timerIconImage = nil
 local boxIconImage = nil
 local lidImage = nil
+local notPlayingBackgroundImage = nil
 
 local elapsedTime = 0
 local lastBoxCompletedTime = nil
@@ -42,12 +43,19 @@ local score = 0
 local currentTimer = nil
 local thisBoxStartedTime = nil
 local catSpawnedTime = nil
+local gameStartedTime = nil
+local gameEndedTime = nil
 
 local CAT_TUBE_APPEAR_DURATION = 0.7
 local BOX_LID_DROP_DURATION = 0.6
 local BOX_OUT_DURATION = 0.5
 local BOX_IN_DURATION = BOX_OUT_DURATION
 local BOX_TOTAL_DURATION = BOX_LID_DROP_DURATION + BOX_OUT_DURATION + BOX_IN_DURATION
+
+local START_SCREEN_OUT_DURATION = 0.6
+local END_SCREEN_IN_DURATION = 1.2
+local NOT_PLAYING_SCREEN_INSET_X = 0
+local NOT_PLAYING_SCREEN_INSET_Y = 50
 
 local MINIMUM_MEOW_INTERVAL = 2
 local MEOW_CHANCE = 0.6
@@ -80,6 +88,7 @@ function love.load()
 	timerIconImage = loadImage("timer")
 	boxIconImage = loadImage("box icon")
 	lidImage = loadImage("lid")
+	notPlayingBackgroundImage = loadImage("not playing")
 
 	backgroundMusic = love.audio.newSource("sound/background.mp3")
 	backgroundMusic:setLooping(true)
@@ -162,7 +171,7 @@ end
 
 function start()
 	playing = true
-	makeCat()
+	gameStartedTime = elapsedTime
 	thisBoxStartedTime = elapsedTime + CAT_TUBE_APPEAR_DURATION
 end
 
@@ -174,7 +183,7 @@ end
 function endGame()
 	playing = false
 	gameOver = true
-	gameOverTime = elapsedTime
+	gameEndedTime = elapsedTime
 	grabbedCat = nil
 	shiftingCat = nil
 	failureSound:rewind()
@@ -239,8 +248,10 @@ function love.draw()
 	drawCenteredImage(tubeImage, tubeCenterX, 380, imageScale)
 	drawCenteredImage(tubeBottomImage, tubeCenterX, 220, imageScale)
 
-	local mouseX, mouseY = mouseScreenPosition()
-	drawCenteredImage((love.mouse.isDown("l") or grabbedCat or shiftingCat) and handImageGrabby or handImageRegular, mouseX, mouseY, imageScale)
+	if playing then
+		local mouseX, mouseY = mouseScreenPosition()
+		drawCenteredImage((love.mouse.isDown("l") or grabbedCat or shiftingCat) and handImageGrabby or handImageRegular, mouseX, mouseY, imageScale)
+	end
 	love.graphics.pop()
 
 	drawCenteredImage(boxIconImage, w - 64, 68, imageScale)
@@ -249,15 +260,21 @@ function love.draw()
 	local remainingTime = math.min(currentTimer, round(currentTimer - (playing and (elapsedTime - thisBoxStartedTime) or 0)))
 	drawText("0:" .. (remainingTime < 10 and "0" or "" ) .. tostring(remainingTime), w - 280, 44, true)
 
-	if not playing then -- TODO: support animating out or (playing and elapsedTime < thisBoxStartedTime + TITLE_CARD_ANIMATION_DELAY)
-		-- TODO: crop blur with scissor rect (which, notably, needs to be in window coordinates — ignores transforms)
-		-- love.graphics.setScissor(0, 0, w * pixelScale, h * pixelScale / 2)
+	local notPlayingVisibility = 0
+	if playing then
+		notPlayingVisibility = 1 - math.max(0, math.min(1, (elapsedTime - gameStartedTime) / START_SCREEN_OUT_DURATION))
+	else
 		if gameOver then
-			love.graphics.setColor(200, 0, 0, 200)
+			notPlayingVisibility = math.max(0, math.min(1, (elapsedTime - gameEndedTime) / END_SCREEN_IN_DURATION))
 		else
-			love.graphics.setColor(0, 200, 0, 200)
+			notPlayingVisibility = 1
 		end
-		love.graphics.rectangle("fill", 0, 0, w, h)
+	end
+	if notPlayingVisibility > 0 then
+		local scissorHeight = h * pixelScale
+		love.graphics.setScissor(NOT_PLAYING_SCREEN_INSET_X * pixelScale, math.pow(1 - notPlayingVisibility, 4) * scissorHeight + NOT_PLAYING_SCREEN_INSET_Y * pixelScale, (w - 2 * NOT_PLAYING_SCREEN_INSET_X) * pixelScale, scissorHeight - 2 * NOT_PLAYING_SCREEN_INSET_Y * pixelScale)
+		drawCenteredImage(notPlayingBackgroundImage, w / 2, h / 2, imageScale)
+		
 		love.graphics.setScissor()
 	end
 end
@@ -344,6 +361,8 @@ function love.update(dt)
 		return
 	end
 
+	if playing and elapsedTime > gameStartedTime + START_SCREEN_OUT_DURATION * 0.8 and #cats == 0 then makeCat() end
+
 	local mousePoint = mouseGridPoint()
 	if grabbedCat ~= nil then
 		local grabPoint = catPositionToGridSpace(grabbedCat.points[grabbedCatSegmentIndex], grabbedCat)
@@ -399,7 +418,9 @@ end
 function love.mousereleased(x, y, button)
 	if not playing then
 		if gameOver then
-			reset()
+			if elapsedTime > gameEndedTime + END_SCREEN_IN_DURATION + 1 then
+				reset()
+			end
 		else
 			start()
 		end
