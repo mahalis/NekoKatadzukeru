@@ -16,6 +16,8 @@ local grabbedCatSegmentIndex = 1
 local shiftingCat = nil
 local shiftingCatEnd = 0
 
+local catOccupyingTube = nil
+
 local isHighDPI = false
 local catHeadImage = nil
 local catBodyImage = nil
@@ -25,6 +27,8 @@ local backgroundSegmentImage = nil
 local tubeImage = nil
 local tubeTopImage = nil
 local tubeBottomImage = nil
+local handImageRegular = nil
+local handImageGrabby = nil
 
 function love.load()
 	math.randomseed(os.time())
@@ -38,8 +42,6 @@ function love.load()
 		grid[#grid + 1] = column
 	end
 
-	makeCat(5)
-
 	isHighDPI = (love.window.getPixelScale() > 1)
 	catHeadImage = loadImage("head")
 	catBodyImage = loadImage("body")
@@ -49,6 +51,10 @@ function love.load()
 	tubeImage = loadImage("tube")
 	tubeTopImage = loadImage("tube top")
 	tubeBottomImage = loadImage("tube bottom")
+	handImageRegular = loadImage("hand regular")
+	handImageGrabby = loadImage("hand grabby")
+
+	love.mouse.setVisible(false)
 end
 
 function loadImage(pathName) -- omit “graphics/” and “.png”
@@ -101,7 +107,7 @@ function love.draw()
 		local catPoints = cat.points
 		local catPosition = cat.gridPosition
 		
-		local alpha = cat.isPlaced and 1 or 0.7
+		local alpha = (cat.isPlaced or canPlaceCat(cat)) and 1 or 0.7
 		love.graphics.setColor(255, 255, 255, 255 * alpha)
 
 		for i = 1, #catPoints do
@@ -109,6 +115,7 @@ function love.draw()
 			local gridPoint = pAdd(point, catPosition)
 			local centerX, centerY = gridPoint.x * GRID_CELL_SIZE, gridPoint.y * GRID_CELL_SIZE
 			
+			-- TODO: probably need a way to package up the list of segments so’s to be able to draw shadows, selection highlights, etc., assuming I get around to those (hah!)
 			if i == 1 then
 				local angle = angleForPointDirection(pSub(catPoints[i + 1], point))
 				drawCenteredImage(catHeadImage, centerX, centerY, imageScale, angle)
@@ -146,8 +153,8 @@ function love.draw()
 	drawCenteredImage(tubeTopImage, tubeCenterX, -220, imageScale)
 	drawCenteredImage(tubeBottomImage, tubeCenterX, 220, imageScale)
 
-	local mousePoint = mouseGridPoint()
-	love.graphics.circle("fill", mousePoint.x * GRID_CELL_SIZE, mousePoint.y * GRID_CELL_SIZE, 5)
+	local mouseX, mouseY = mouseScreenPosition()
+	drawCenteredImage((love.mouse.isDown("l") or grabbedCat or shiftingCat) and handImageGrabby or handImageRegular, mouseX, mouseY, imageScale)
 end
 
 function pointPairMatches(p1, p2, testPoint1, testPoint2)
@@ -184,6 +191,9 @@ function love.update(dt)
 			shiftCat(shiftingCat, shiftingCatEnd, mousePoint)
 		end
 	end
+	if catOccupyingTube == nil then
+		makeCat() -- TODO: delay, animation, etc.
+	end
 end
 
 function love.keypressed(key)
@@ -195,7 +205,7 @@ end
 
 function love.mousepressed(x, y, button)
 	local gridPoint = mouseGridPoint()
-	if grabbedCat == nil then
+	if grabbedCat == nil and shiftingCat == nil then
 		local cat, segment = findCatAtPosition(gridPoint)
 		if cat then
 			if segment == 1 or segment == #cat.points then
@@ -207,16 +217,16 @@ function love.mousepressed(x, y, button)
 			end
 		end
 	else
-		if placeCat(grabbedCat) then -- TODO: feedback if you can't place the cat there
+		if grabbedCat ~= nil and attemptToPlaceCat(grabbedCat) then -- TODO: feedback if you can't place the cat there
 			grabbedCat = nil
+		elseif shiftingCat then
+			shiftingCat = nil
 		end
 	end
 end
 
 function love.mousereleased(x, y, button)
-	if shiftingCat then
-		shiftingCat = nil
-	end
+	
 end
 
 function mouseGridPoint()
@@ -320,17 +330,23 @@ function findCatAtPosition(gridPosition) -- returns (cat, segment index)
 	return nil, nil
 end
 
-function placeCat(cat)
-	if canPlaceCat(cat) then
+function attemptToPlaceCat(cat)
+	if canPlaceCatOnGrid(cat) then
 		setGridCellsForCat(cat)
-		cat.isPlaced = true
+		finishCatPlacement(cat)
+	
 		return true
 	elseif catIsInValidOffGridPosition(cat) then
-		cat.isPlaced = true
+		finishCatPlacement(cat)
 		return true
 	end
 
 	return false
+end
+
+function finishCatPlacement(cat)
+	cat.isPlaced = true
+	if cat == catOccupyingTube and cat.gridPosition.x > -10 then catOccupyingTube = nil end
 end
 
 function setGridCellsForCat(cat)
@@ -343,6 +359,10 @@ function setGridCellsForCat(cat)
 end
 
 function canPlaceCat(cat)
+	return canPlaceCatOnGrid(cat) or catIsInValidOffGridPosition(cat)
+end
+
+function canPlaceCatOnGrid(cat)
 	local position = cat.gridPosition
 	local catPoints = cat.points
 	for i = 1, #catPoints do
@@ -357,7 +377,7 @@ end
 
 function isValidOffGridPoint(gridPoint)
 	if gridPoint.x > -4 or gridPoint.x == -9 or gridPoint.x == -12 then return false end
-	if (gridPoint.x == -10 or gridPoint.x == -11) and (gridPoint.y > 2 or gridPoint.y < -2) then return false end
+	if (gridPoint.x == -10 or gridPoint.x == -11) and (gridPoint.y > 3 or gridPoint.y < -3) then return false end
 	return true
 end
 
@@ -372,11 +392,14 @@ end
 
 -- cat members: points, identifier, gridPosition, isPlaced
 -- TODO: appearance (color / pattern / whatever), time of last movement, etc.
-function makeCat(length) -- returns cat
+function makeCat() -- returns cat
+	local length = math.random(3, 7)
 	local identifier = #cats + 1
 	local lastPoint = p(0, 0)
 	local points = { lastPoint }
 	local hasGoneLeft, hasGoneRight = false, false
+	local xExtent = 0
+	local minY, maxY = 0, 0
 	for i = 1, length - 1 do
 		local potentialPoints = neighborsOfPoint(lastPoint, hasGoneLeft, hasGoneRight)
 		if i > 1 then
@@ -394,6 +417,9 @@ function makeCat(length) -- returns cat
 			local newPoint = potentialPoints[math.random(#potentialPoints)]
 			if newPoint.x < lastPoint.x then hasGoneLeft = true end
 			if newPoint.x > lastPoint.x then hasGoneRight = true end
+			if math.abs(newPoint.x) > 0 then xExtent = newPoint.x end
+			if newPoint.y > maxY then maxY = newPoint.y end
+			if newPoint.y < minY then minY = newPoint.y end
 			points[#points + 1] = newPoint
 			lastPoint = newPoint
 		else
@@ -404,10 +430,11 @@ function makeCat(length) -- returns cat
 	local cat = {}
 	cat.points = points
 	cat.identifier = identifier
-	cat.isPlaced = false
-	cat.gridPosition = p(0, 0)
+	cat.isPlaced = true
+	cat.gridPosition = p(xExtent > 0 and -11 or -10, 0)
 
 	cats[identifier] = cat
+	catOccupyingTube = cat
 
 	return cat
 end
