@@ -29,6 +29,9 @@ local tubeTopImage = nil
 local tubeBottomImage = nil
 local handImageRegular = nil
 local handImageGrabby = nil
+local boxImage = nil
+
+local elapsedTime = 0
 
 function love.load()
 	math.randomseed(os.time())
@@ -53,6 +56,11 @@ function love.load()
 	tubeBottomImage = loadImage("tube bottom")
 	handImageRegular = loadImage("hand regular")
 	handImageGrabby = loadImage("hand grabby")
+	boxImage = loadImage("box")
+
+	backgroundMusic = love.audio.newSource("sound/background.mp3")
+	backgroundMusic:setLooping(true)
+	backgroundMusic:play()
 
 	love.mouse.setVisible(false)
 end
@@ -70,8 +78,9 @@ function love.draw()
 	love.graphics.scale(pixelScale)
 
 	local imageScale = 1 / pixelScale
+	local backgroundXOffset = math.fmod(elapsedTime * 0.5, 1)
 	for i = 0, 16 do
-		love.graphics.draw(backgroundSegmentImage, i * 60, 0, 0, imageScale)
+		love.graphics.draw(backgroundSegmentImage, (i - 1 + backgroundXOffset) * 60, 0, 0, imageScale)
 	end
 
 	love.graphics.translate(w / 2 + GRID_OFFSET_X, h / 2)
@@ -79,28 +88,8 @@ function love.draw()
 	local tubeCenterX = -GRID_CELL_SIZE * 10.5
 	drawCenteredImage(tubeImage, tubeCenterX, 0, imageScale)
 
-	local gridStartX, gridStartY = -PLACEMENT_GRID_COLUMNS * GRID_CELL_SIZE / 2, -PLACEMENT_GRID_ROWS * GRID_CELL_SIZE / 2
-	for i = 1, PLACEMENT_GRID_COLUMNS do
-		local column = grid[i]
-		for j = 1, PLACEMENT_GRID_ROWS do
-			local cell = column[j]
-			local cellType = cell.type
-			local cellOriginX = gridStartX + (i - 1) * GRID_CELL_SIZE
-			local cellOriginY = gridStartY + (j - 1) * GRID_CELL_SIZE
-			if cell.id ~= 0 then
-				if cellType == 0 then
-					love.graphics.setColor(100, 180, 255, 180)
-				elseif cellType == 1 then
-					love.graphics.setColor(255, 180, 100, 180)
-				else
-					love.graphics.setColor(255, 255, 255, 100)
-				end
-				love.graphics.rectangle("fill", cellOriginX, cellOriginY, GRID_CELL_SIZE, GRID_CELL_SIZE)
-			end
-			love.graphics.setColor(255, 255, 255, 255)
-			love.graphics.rectangle("line", cellOriginX + GRID_CELL_PADDING, cellOriginY + GRID_CELL_PADDING, GRID_CELL_SIZE - 2 * GRID_CELL_PADDING, GRID_CELL_SIZE - 2 * GRID_CELL_PADDING)
-		end
-	end
+
+	drawCenteredImage(boxImage, 0, 0, imageScale)
 
 	for i = 1, #cats do
 		local cat = cats[i]
@@ -176,6 +165,7 @@ function drawCenteredImage(image, x, y, scale, angle)
 end
 
 function love.update(dt)
+	elapsedTime = elapsedTime + dt
 	local mousePoint = mouseGridPoint()
 	if grabbedCat ~= nil then
 		local grabPoint = catPositionToGridSpace(grabbedCat.points[grabbedCatSegmentIndex], grabbedCat)
