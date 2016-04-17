@@ -42,6 +42,13 @@ local instruction1Image = nil
 local instruction2Image = nil
 local beginImage = nil
 
+local gameOverImage = nil
+local completedImage = nil
+local boxOfCatsImage = nil
+local boxesOfCatsImage = nil
+local highScoreImage = nil
+local tryAgainImage = nil
+
 local elapsedTime = 0
 local lastBoxCompletedTime = nil
 
@@ -51,6 +58,7 @@ local thisBoxStartedTime = nil
 local catSpawnedTime = nil
 local gameStartedTime = nil
 local gameEndedTime = nil
+local lastHighScore = nil
 
 local CAT_TUBE_APPEAR_DURATION = 0.7
 local BOX_LID_DROP_DURATION = 0.6
@@ -62,11 +70,14 @@ local START_SCREEN_OUT_DURATION = 0.6
 local END_SCREEN_IN_DURATION = 1.2
 local NOT_PLAYING_SCREEN_INSET_X = 0
 local NOT_PLAYING_SCREEN_INSET_Y = 50
+local FINAL_SCORE_PADDING = 5
 
 local MINIMUM_MEOW_INTERVAL = 2
 local MEOW_CHANCE = 0.6
 
 local uiFont = nil
+local finalScoreFont = nil
+
 local catSounds = {}
 local tubeSound = nil
 local pickSound = nil
@@ -102,11 +113,20 @@ function love.load()
 	instruction2Image = loadImage("text/instruction 2")
 	beginImage = loadImage("text/begin")
 
+	gameOverImage = loadImage("text/game over")
+	completedImage = loadImage("text/you completed")
+	boxOfCatsImage = loadImage("text/box of cats")
+	boxesOfCatsImage = loadImage("text/boxes of cats")
+	highScoreImage = loadImage("text/high score")
+	tryAgainImage = loadImage("text/again")
+
+
 	backgroundMusic = love.audio.newSource("sound/background.mp3")
 	backgroundMusic:setLooping(true)
 	backgroundMusic:play()
 
 	uiFont = love.graphics.newFont("font/weblysleekuisl.ttf", 36)
+	finalScoreFont = love.graphics.newFont("font/weblysleekuisl.ttf", 60)
 
 	for i = 1, 7 do
 		catSounds[i] = love.audio.newSource("sound/cat " .. tostring(i) .. ".wav", "static")
@@ -294,6 +314,29 @@ function love.draw()
 			drawCenteredImage(instruction2Image, 0, 420, imageScale)
 			drawCenteredImage(beginImage, 0, 500, imageScale)
 		else
+			drawCenteredImage(gameOverImage, 0, 140, imageScale)
+
+			local scoreText = tostring(score)
+			local scoreWidth = finalScoreFont:getWidth(scoreText)
+			local boxesImage = score == 1 and boxOfCatsImage or boxesOfCatsImage
+			local completedWidth = completedImage:getWidth() * imageScale
+			local boxesWidth = boxesImage:getWidth() * imageScale
+			local centeringXOffset = (completedWidth - boxesWidth) / 2
+
+			local scoreY = 220
+
+			love.graphics.setColor(0, 53, 115, 255)
+			drawText(scoreText, centeringXOffset, scoreY, false)
+			love.graphics.setColor(255, 255, 255, 255)
+			local scoreTextMargin = scoreWidth / 2 + 10
+			love.graphics.draw(completedImage, -scoreTextMargin - completedWidth + centeringXOffset, scoreY + 43, 0, imageScale)
+			love.graphics.draw(boxesImage, scoreTextMargin + centeringXOffset, scoreY + 43, 0, imageScale)
+			
+			if lastHighScore and score > lastHighScore then
+				drawCenteredImage(highScoreImage, 0, 340, imageScale)
+			end
+
+			drawCenteredImage(tryAgainImage, 0, 460, imageScale)
 		end
 		
 		love.graphics.setScissor()
@@ -301,13 +344,15 @@ function love.draw()
 end
 
 function drawText(text, x, y, isUIText)
-	local font = isUIText and uiFont or nil
+	local font = isUIText and uiFont or finalScoreFont
 	love.graphics.setFont(font)
 	local textWidth = font:getWidth(text)
 	local textXOrigin = isUIText and textWidth or textWidth / 2
-	love.graphics.setColor(0, 0, 0, 180)
-	love.graphics.print(text, x, y + 2, 0, 1, 1, textXOrigin)
-	love.graphics.setColor(255, 255, 255, 255)
+	if isUIText then
+		love.graphics.setColor(0, 0, 0, 180)
+		love.graphics.print(text, x, y + 2, 0, 1, 1, textXOrigin)
+		love.graphics.setColor(255, 255, 255, 255)
+	end
 	love.graphics.print(text, x, y, 0, 1, 1, textXOrigin)
 end
 
@@ -440,6 +485,7 @@ function love.mousereleased(x, y, button)
 	if not playing then
 		if gameOver then
 			if elapsedTime > gameEndedTime + END_SCREEN_IN_DURATION + 1 then
+				if lastHighScore == nil or score > lastHighScore then lastHighScore = score end
 				reset()
 			end
 		else
