@@ -21,6 +21,10 @@ local catHeadImage = nil
 local catBodyImage = nil
 local catCornerImage = nil
 local catButtImage = nil
+local backgroundSegmentImage = nil
+local tubeImage = nil
+local tubeTopImage = nil
+local tubeBottomImage = nil
 
 function love.load()
 	math.randomseed(os.time())
@@ -35,15 +39,16 @@ function love.load()
 	end
 
 	makeCat(5)
-	makeCat(7)
-	cats[2].gridPosition = p(-7, 2)
-	placeCat(cats[1])
 
 	isHighDPI = (love.window.getPixelScale() > 1)
 	catHeadImage = loadImage("head")
 	catBodyImage = loadImage("body")
 	catCornerImage = loadImage("corner")
 	catButtImage = loadImage("butt")
+	backgroundSegmentImage = loadImage("background segment")
+	tubeImage = loadImage("tube")
+	tubeTopImage = loadImage("tube top")
+	tubeBottomImage = loadImage("tube bottom")
 end
 
 function loadImage(pathName) -- omit “graphics/” and “.png”
@@ -59,8 +64,14 @@ function love.draw()
 	love.graphics.scale(pixelScale)
 
 	local imageScale = 1 / pixelScale
+	for i = 0, 16 do
+		love.graphics.draw(backgroundSegmentImage, i * 60, 0, 0, imageScale)
+	end
 
 	love.graphics.translate(w / 2 + GRID_OFFSET_X, h / 2)
+
+	local tubeCenterX = -GRID_CELL_SIZE * 10.5
+	drawCenteredImage(tubeImage, tubeCenterX, 0, imageScale)
 
 	local gridStartX, gridStartY = -PLACEMENT_GRID_COLUMNS * GRID_CELL_SIZE / 2, -PLACEMENT_GRID_ROWS * GRID_CELL_SIZE / 2
 	for i = 1, PLACEMENT_GRID_COLUMNS do
@@ -131,7 +142,10 @@ function love.draw()
 		end
 	end
 
-	love.graphics.setColor(255, 255, 255, 220)
+	love.graphics.setColor(255, 255, 255, 255)
+	drawCenteredImage(tubeTopImage, tubeCenterX, -220, imageScale)
+	drawCenteredImage(tubeBottomImage, tubeCenterX, 220, imageScale)
+
 	local mousePoint = mouseGridPoint()
 	love.graphics.circle("fill", mousePoint.x * GRID_CELL_SIZE, mousePoint.y * GRID_CELL_SIZE, 5)
 end
@@ -242,9 +256,9 @@ function shiftCat(cat, whichEnd, gridPosition)
 
 	if findCatAtPosition(gridPosition) then return false end
 
-	local isOffGrid = catIsOffGrid(cat)
-	local gridCell = getGridCell(catPositionToGridSpace(newPointInCatSpace, cat))
-	if (gridCell == nil) ~= isOffGrid then return false end
+	local isOffGrid = isValidOffGridPoint(gridPosition)
+	local gridCell = getGridCell(gridPosition)
+	if not (isOffGrid or gridCell) then return false end
 
 	if whichEnd == 0 then
 		setGridCell(catPositionToGridSpace(points[#points], cat), makeEmptyCatGridCell())
@@ -311,7 +325,7 @@ function placeCat(cat)
 		setGridCellsForCat(cat)
 		cat.isPlaced = true
 		return true
-	elseif catIsOffGrid(cat) then
+	elseif catIsInValidOffGridPosition(cat) then
 		cat.isPlaced = true
 		return true
 	end
@@ -341,11 +355,17 @@ function canPlaceCat(cat)
 	return true
 end
 
-function catIsOffGrid(cat)
-	local position = cat.gridPosition
+function isValidOffGridPoint(gridPoint)
+	if gridPoint.x > -4 or gridPoint.x == -9 or gridPoint.x == -12 then return false end
+	if (gridPoint.x == -10 or gridPoint.x == -11) and (gridPoint.y > 2 or gridPoint.y < -2) then return false end
+	return true
+end
+
+function catIsInValidOffGridPosition(cat)
 	local points = cat.points
 	for i = 1, #points do
-		if getGridCell(catPositionToGridSpace(points[i], cat)) ~= nil then return false end
+		local gridPosition = catPositionToGridSpace(points[i], cat)
+		if not isValidOffGridPoint(gridPosition) then return false end
 	end
 	return true
 end
