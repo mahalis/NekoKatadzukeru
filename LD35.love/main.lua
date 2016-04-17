@@ -31,8 +31,17 @@ local tubeBottomImage = nil
 local handImageRegular = nil
 local handImageGrabby = nil
 local boxImage = nil
+local timerIconImage = nil
+local boxIconImage = nil
 
 local elapsedTime = 0
+local lastBoxCompletedTime = nil
+
+local score = 0
+local currentTimer = nil
+local thisBoxStartedTime = nil
+
+local uiFont = nil
 
 function love.load()
 	math.randomseed(os.time())
@@ -50,10 +59,14 @@ function love.load()
 	handImageRegular = loadImage("hand regular")
 	handImageGrabby = loadImage("hand grabby")
 	boxImage = loadImage("box")
+	timerIconImage = loadImage("timer")
+	boxIconImage = loadImage("box icon")
 
 	backgroundMusic = love.audio.newSource("sound/background.mp3")
 	backgroundMusic:setLooping(true)
 	backgroundMusic:play()
+
+	uiFont = love.graphics.newFont("font/weblysleekuisl.ttf", 36)
 
 	love.mouse.setVisible(false)
 
@@ -68,7 +81,23 @@ end
 
 function reset()
 	clearGrid()
+	cats = {}
+	justBoxedCats = {}
+	playing = false
+	gameOver = false
+	grabbedCat = nil
+	shiftingCat = nil
+	catOccupyingTube = nil
+
+	setScore(0)
+	lastBoxCompletedTime = nil
+
 	makeCat()
+end
+
+function setScore(newScore)
+	score = newScore
+	currentTimer = round(math.max(20, 40 - 2 * score) / 2) * 2
 end
 
 function clearGrid()
@@ -96,6 +125,21 @@ function boxGridCats()
 		end
 	end
 	cats = offGridCats
+
+	lastBoxCompletedTime = elapsedTime
+	thisBoxStartedTime = lastBoxCompletedTime
+	setScore(score + 1)
+end
+
+function start()
+	playing = true
+	thisBoxStartedTime = elapsedTime
+end
+
+function endGame()
+	playing = false
+	gameOver = true
+	gameOverTime = elapsedTime
 end
 
 function love.draw()
@@ -106,10 +150,11 @@ function love.draw()
 
 	local imageScale = 1 / pixelScale
 	local backgroundXOffset = math.fmod(elapsedTime * 0.5, 1)
+	love.graphics.setColor(255, 255, 255, 255)
 	for i = 0, 16 do
 		love.graphics.draw(backgroundSegmentImage, (i - 1 + backgroundXOffset) * 60, 0, 0, imageScale)
 	end
-
+	love.graphics.push()
 	love.graphics.translate(w / 2 + GRID_OFFSET_X, h / 2)
 
 	local tubeCenterX = -GRID_CELL_SIZE * 10.5
@@ -129,6 +174,33 @@ function love.draw()
 
 	local mouseX, mouseY = mouseScreenPosition()
 	drawCenteredImage((love.mouse.isDown("l") or grabbedCat or shiftingCat) and handImageGrabby or handImageRegular, mouseX, mouseY, imageScale)
+	love.graphics.pop()
+
+	drawCenteredImage(boxIconImage, w - 64, 68, imageScale)
+	drawText(tostring(score), w - 100, 44, true)
+	drawCenteredImage(timerIconImage, w - 240, 68, imageScale)
+	local remainingTime = round(currentTimer - (playing and (elapsedTime - thisBoxStartedTime) or 0))
+	drawText("0:" .. (remainingTime < 10 and "0" or "" ) .. tostring(remainingTime), w - 280, 44, true)
+
+	if not playing then -- TODO: support animating out or (playing and elapsedTime < thisBoxStartedTime + TITLE_CARD_ANIMATION_DELAY)
+		if gameOver then
+			love.graphics.setColor(200, 0, 0, 200)
+		else
+			love.graphics.setColor(0, 200, 0, 200)
+		end
+		love.graphics.rectangle("fill", 0, 0, w, h)
+	end
+end
+
+function drawText(text, x, y, isUIText)
+	local font = isUIText and uiFont or nil
+	love.graphics.setFont(font)
+	local textWidth = font:getWidth(text)
+	local textXOrigin = isUIText and textWidth or textWidth / 2
+	love.graphics.setColor(0, 0, 0, 180)
+	love.graphics.print(text, x, y + 2, 0, 1, 1, textXOrigin)
+	love.graphics.setColor(255, 255, 255, 255)
+	love.graphics.print(text, x, y, 0, 1, 1, textXOrigin)
 end
 
 function drawCat(cat, imageScale)
@@ -197,6 +269,11 @@ end
 
 function love.update(dt)
 	elapsedTime = elapsedTime + dt
+	if playing and elapsedTime > thisBoxStartedTime + currentTimer then
+		endGame()
+		return
+	end
+
 	local mousePoint = mouseGridPoint()
 	if grabbedCat ~= nil then
 		local grabPoint = catPositionToGridSpace(grabbedCat.points[grabbedCatSegmentIndex], grabbedCat)
@@ -222,22 +299,34 @@ function love.keypressed(key)
 end
 
 function love.mousepressed(x, y, button)
-	local gridPoint = mouseGridPoint()
-	if grabbedCat == nil and shiftingCat == nil then
-		local cat, segment = findCatAtPosition(gridPoint)
-		if cat then
-			if (segment == 1 or segment == #cat.points) and not (cat == catOccupyingTube) then
-				shiftingCat = cat
-				shiftingCatEnd = (segment == 1) and 0 or 1
-			else
-				pickUpCatAtPosition(gridPoint)
+	if playing then
+		local gridPoint = mouseGridPoint()
+		if grabbedCat == nil and shiftingCat == nil then
+			local cat, segment = findCatAtPosition(gridPoint)
+			if cat then
+				if (segment == 1 or segment == #cat.points) and not (cat == catOccupyingTube) then
+					shiftingCat = cat
+					shiftingCatEnd = (segment == 1) and 0 or 1
+				else
+					pickUpCatAtPosition(gridPoint)
+				end
+			end
+		else
+			if grabbedCat ~= nil and attemptToPlaceCat(grabbedCat) then
+				grabbedCat = nil
+			elseif shiftingCat then
+				shiftingCat = nil
 			end
 		end
-	else
-		if grabbedCat ~= nil and attemptToPlaceCat(grabbedCat) then
-			grabbedCat = nil
-		elseif shiftingCat then
-			shiftingCat = nil
+	end
+end
+
+function love.mousereleased(x, y, button)
+	if not playing then
+		if gameOver then
+			reset()
+		else
+			start()
 		end
 	end
 end
