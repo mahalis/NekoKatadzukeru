@@ -120,49 +120,7 @@ function love.draw()
 
 	for i = 1, #cats do
 		local cat = cats[i]
-		local catPoints = cat.points
-		local catPosition = cat.gridPosition
-		
-		local alpha = (cat.isPlaced or canPlaceCat(cat)) and 1 or 0.7
-		love.graphics.setColor(255, 255, 255, 255 * alpha)
-
-		for i = 1, #catPoints do
-			local point = catPoints[i]
-			local gridPoint = pAdd(point, catPosition)
-			local centerX, centerY = gridPoint.x * GRID_CELL_SIZE, gridPoint.y * GRID_CELL_SIZE
-			
-			-- TODO: probably need a way to package up the list of segments so’s to be able to draw shadows, selection highlights, etc., assuming I get around to those (hah!)
-			if i == 1 then
-				local angle = angleForPointDirection(pSub(catPoints[i + 1], point))
-				drawCenteredImage(catHeadImage, centerX, centerY, imageScale, angle)
-			elseif i == #catPoints then
-				local angle = angleForPointDirection(pSub(point, catPoints[i - 1]))
-				drawCenteredImage(catButtImage, centerX, centerY, imageScale, angle)
-			else
-				local lastPoint = catPoints[i - 1]
-				local nextPoint = catPoints[i + 1]
-				local image, angle = nil, 0
-				if math.abs(lastPoint.x) == math.abs(nextPoint.x) or math.abs(lastPoint.y) == math.abs(nextPoint.y) then
-					image = catBodyImage
-					angle = angleForPointDirection(pSub(nextPoint, point))
-				else
-					image = catCornerImage
-					local lastDelta = pSub(lastPoint, point)
-					local nextDelta = pSub(nextPoint, point)
-					if pointPairMatches(lastDelta, nextDelta, p(0, -1), p(1, 0)) then
-						angle = 0
-					elseif pointPairMatches(lastDelta, nextDelta, p(1, 0), p(0, 1)) then
-						angle = 0.25
-					elseif pointPairMatches(lastDelta, nextDelta, p(0, 1), p(-1, 0)) then
-						angle = 0.5
-					else
-						angle = 0.75
-					end
-				end
-				drawCenteredImage(image, centerX, centerY, imageScale, angle)
-			end
-			
-		end
+		drawCat(cats[i], imageScale)
 	end
 
 	love.graphics.setColor(255, 255, 255, 255)
@@ -171,6 +129,52 @@ function love.draw()
 
 	local mouseX, mouseY = mouseScreenPosition()
 	drawCenteredImage((love.mouse.isDown("l") or grabbedCat or shiftingCat) and handImageGrabby or handImageRegular, mouseX, mouseY, imageScale)
+end
+
+function drawCat(cat, imageScale)
+	local catPoints = cat.points
+	local catPosition = cat.gridPosition
+	
+	local alpha = (cat.isPlaced or canPlaceCat(cat)) and 1 or 0.7
+	love.graphics.setColor(255, 255, 255, 255 * alpha)
+
+	for i = 1, #catPoints do
+		local point = catPoints[i]
+		local gridPoint = pAdd(point, catPosition)
+		local centerX, centerY = gridPoint.x * GRID_CELL_SIZE, gridPoint.y * GRID_CELL_SIZE
+		
+		-- TODO: probably need a way to package up the list of segments so’s to be able to draw shadows, selection highlights, etc., assuming I get around to those (hah!)
+		if i == 1 then
+			local angle = angleForPointDirection(pSub(catPoints[i + 1], point))
+			drawCenteredImage(catHeadImage, centerX, centerY, imageScale, angle)
+		elseif i == #catPoints then
+			local angle = angleForPointDirection(pSub(point, catPoints[i - 1]))
+			drawCenteredImage(catButtImage, centerX, centerY, imageScale, angle)
+		else
+			local lastPoint = catPoints[i - 1]
+			local nextPoint = catPoints[i + 1]
+			local image, angle = nil, 0
+			if math.abs(lastPoint.x) == math.abs(nextPoint.x) or math.abs(lastPoint.y) == math.abs(nextPoint.y) then
+				image = catBodyImage
+				angle = angleForPointDirection(pSub(nextPoint, point))
+			else
+				image = catCornerImage
+				local lastDelta = pSub(lastPoint, point)
+				local nextDelta = pSub(nextPoint, point)
+				if pointPairMatches(lastDelta, nextDelta, p(0, -1), p(1, 0)) then
+					angle = 0
+				elseif pointPairMatches(lastDelta, nextDelta, p(1, 0), p(0, 1)) then
+					angle = 0.25
+				elseif pointPairMatches(lastDelta, nextDelta, p(0, 1), p(-1, 0)) then
+					angle = 0.5
+				else
+					angle = 0.75
+				end
+			end
+			drawCenteredImage(image, centerX, centerY, imageScale, angle)
+		end
+		
+	end
 end
 
 function pointPairMatches(p1, p2, testPoint1, testPoint2)
@@ -226,12 +230,11 @@ function love.mousepressed(x, y, button)
 				shiftingCat = cat
 				shiftingCatEnd = (segment == 1) and 0 or 1
 			else
-				-- TODO: clicking on the body should only highlight the cat, should have to release to pick it up
 				pickUpCatAtPosition(gridPoint)
 			end
 		end
 	else
-		if grabbedCat ~= nil and attemptToPlaceCat(grabbedCat) then -- TODO: feedback if you can't place the cat there
+		if grabbedCat ~= nil and attemptToPlaceCat(grabbedCat) then
 			grabbedCat = nil
 		elseif shiftingCat then
 			shiftingCat = nil
@@ -309,7 +312,6 @@ end
 function pickUpCatAtPosition(gridPosition) -- returns bool
 	local cat, index = findCatAtPosition(gridPosition)
 	if cat == nil then
-		print("no cat found")
 		return false
 	end
 	local catPoints = cat.points
@@ -355,7 +357,6 @@ function attemptToPlaceCat(cat)
 		
 		if getRemainingGridSpace() == 0 then
 			boxGridCats()
-			-- TODO: trigger next box
 		end
 		if catOccupyingTube == nil then
 			makeCat()
