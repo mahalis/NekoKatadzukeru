@@ -40,6 +40,9 @@ local lastBoxCompletedTime = nil
 local score = 0
 local currentTimer = nil
 local thisBoxStartedTime = nil
+local catSpawnedTime = nil
+
+local CAT_TUBE_APPEAR_DURATION = 0.7
 
 local uiFont = nil
 
@@ -91,8 +94,6 @@ function reset()
 
 	setScore(0)
 	lastBoxCompletedTime = nil
-
-	makeCat()
 end
 
 function setScore(newScore)
@@ -133,13 +134,21 @@ end
 
 function start()
 	playing = true
-	thisBoxStartedTime = elapsedTime
+	makeCat()
+	thisBoxStartedTime = elapsedTime + CAT_TUBE_APPEAR_DURATION
+end
+
+function catSpawnProgress()
+	if catOccupyingTube == nil or elapsedTime > catSpawnedTime + CAT_TUBE_APPEAR_DURATION then return 1 end
+	return (elapsedTime - catSpawnedTime) / CAT_TUBE_APPEAR_DURATION
 end
 
 function endGame()
 	playing = false
 	gameOver = true
 	gameOverTime = elapsedTime
+	grabbedCat = nil
+	shiftingCat = nil
 end
 
 function love.draw()
@@ -165,11 +174,21 @@ function love.draw()
 
 	for i = 1, #cats do
 		local cat = cats[i]
+		local isSpawningCat = (cat == catOccupyingTube)
+		if isSpawningCat then
+			love.graphics.push()
+			local t = catSpawnProgress()
+			love.graphics.translate(0, round(400 * math.pow(t - 1, 4)))
+		end
 		drawCat(cats[i], imageScale)
+		if isSpawningCat then
+			love.graphics.pop()
+		end
 	end
 
 	love.graphics.setColor(255, 255, 255, 255)
 	drawCenteredImage(tubeTopImage, tubeCenterX, -220, imageScale)
+	drawCenteredImage(tubeImage, tubeCenterX, 380, imageScale)
 	drawCenteredImage(tubeBottomImage, tubeCenterX, 220, imageScale)
 
 	local mouseX, mouseY = mouseScreenPosition()
@@ -403,6 +422,9 @@ function pickUpCatAtPosition(gridPosition) -- returns bool
 	if cat == nil then
 		return false
 	end
+	if cat == catOccupyingTube and elapsedTime < catSpawnedTime + CAT_TUBE_APPEAR_DURATION then
+		return false
+	end
 	local catPoints = cat.points
 
 	for i = 1, #catPoints do
@@ -447,9 +469,7 @@ function attemptToPlaceCat(cat)
 		if getRemainingGridSpace() == 0 then
 			boxGridCats()
 		end
-		if catOccupyingTube == nil then
-			makeCat()
-		end
+		
 	
 		return true
 	elseif catIsInValidOffGridPosition(cat) then
@@ -463,6 +483,13 @@ end
 function finishCatPlacement(cat)
 	cat.isPlaced = true
 	if cat == catOccupyingTube and cat.gridPosition.x > -10 then catOccupyingTube = nil end
+	if catOccupyingTube == nil then
+		if cat.gridPosition.x < -9 then
+			catOccupyingTube = cat
+		else
+			makeCat()
+		end
+	end
 end
 
 function setGridCellsForCat(cat)
@@ -566,6 +593,7 @@ function makeCat() -- returns cat
 
 	cats[identifier] = cat
 	catOccupyingTube = cat
+	catSpawnedTime = elapsedTime
 
 	return cat
 end
