@@ -8,6 +8,7 @@ local PLACEMENT_GRID_ROWS = 5
 
 local GRID_CELL_SIZE = 60
 local GRID_CELL_PADDING = 1
+local GRID_OFFSET_X = 265 -- 0,0 on the grid is this many points offset from the center of the screen
 
 local grabbedCat = nil
 local grabbedCatSegmentIndex = 1
@@ -35,7 +36,7 @@ function love.load()
 
 	makeCat(5)
 	makeCat(7)
-	cats[2].gridPosition = p(7, 2)
+	cats[2].gridPosition = p(-7, 2)
 	placeCat(cats[1])
 
 	isHighDPI = (love.window.getPixelScale() > 1)
@@ -59,7 +60,7 @@ function love.draw()
 
 	local imageScale = 1 / pixelScale
 
-	love.graphics.translate(w / 2, h / 2)
+	love.graphics.translate(w / 2 + GRID_OFFSET_X, h / 2)
 
 	local gridStartX, gridStartY = -PLACEMENT_GRID_COLUMNS * GRID_CELL_SIZE / 2, -PLACEMENT_GRID_ROWS * GRID_CELL_SIZE / 2
 	for i = 1, PLACEMENT_GRID_COLUMNS do
@@ -213,7 +214,7 @@ function mouseScreenPosition()
 	local w, h = love.window.getDimensions()
 	local pixelScale = love.window.getPixelScale()
 	local mouseX, mouseY = love.mouse.getPosition()
-	mouseX = (mouseX / pixelScale - w / 2)
+	mouseX = (mouseX / pixelScale - w / 2 - GRID_OFFSET_X)
 	mouseY = (mouseY / pixelScale - h / 2)
 	return mouseX, mouseY
 end
