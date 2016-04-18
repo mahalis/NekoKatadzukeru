@@ -22,6 +22,7 @@ local catOccupyingTube = nil
 local isHighDPI = false
 local catHeadImage = nil
 local catBodyImage = nil
+local catBodyStartImage = nil
 local catCornerImage = nil
 local catButtImage = nil
 local backgroundSegmentImage = nil
@@ -86,6 +87,9 @@ local shiftSound = nil
 local successSound = nil
 local failureSound = nil
 
+local catShader = nil
+local catColorPairs = { {{0.54, 0.58, 0.6}, {0.66, 0.69, 0.7}}, {{0.92, 0.68, 0.23}, {0.93, 0.8, 0.51}}, {{0.3, 0.29, 0.27}, {0.4, 0.38, 0.36}}, {{0.98, 0.98, 0.95}, {1, 1, 1}} }
+
 function love.load()
 	math.randomseed(os.time())
 	love.graphics.setBackgroundColor(60, 100, 150, 255)
@@ -93,6 +97,7 @@ function love.load()
 	isHighDPI = (love.window.getPixelScale() > 1)
 	catHeadImage = loadImage("head")
 	catBodyImage = loadImage("body")
+	catBodyStartImage = loadImage("body start")
 	catCornerImage = loadImage("corner")
 	catButtImage = loadImage("butt")
 	backgroundSegmentImage = loadImage("background segment")
@@ -138,6 +143,7 @@ function love.load()
 	successSound = love.audio.newSource("sound/success.wav", "static")
 	failureSound = love.audio.newSource("sound/failure.wav", "static")
 
+	catShader = love.graphics.newShader("cat.fsh")
 	love.mouse.setVisible(false)
 
 	reset()
@@ -250,9 +256,15 @@ function love.draw()
 	if animatingBoxOut then
 		love.graphics.push()
 		love.graphics.translate(boxX, 0)
+
+		love.graphics.setScissor((w / 2 + GRID_OFFSET_X - GRID_CELL_SIZE * PLACEMENT_GRID_COLUMNS * 0.5) * pixelScale, (h / 2 - GRID_CELL_SIZE * PLACEMENT_GRID_ROWS * 0.5) * pixelScale, GRID_CELL_SIZE * PLACEMENT_GRID_COLUMNS * pixelScale, GRID_CELL_SIZE * PLACEMENT_GRID_ROWS * pixelScale)
+		love.graphics.setShader(catShader)
 		for i = 1, #justBoxedCats do
 			drawCat(justBoxedCats[i], imageScale)
 		end
+		love.graphics.setShader()
+		love.graphics.setScissor()
+		
 		local lidProgress = math.pow(1 - math.max(0, math.min(1, (elapsedTime - lastBoxCompletedTime) / BOX_LID_DROP_DURATION)), 3)
 		drawCenteredImage(lidImage, 0, -480 * lidProgress, imageScale)
 		love.graphics.pop()
@@ -261,6 +273,7 @@ function love.draw()
 		drawCenteredImage(boxImage, 0, 480 * boxInProgress, imageScale)
 	end
 
+	love.graphics.setShader(catShader)
 	for i = 1, #cats do
 		local cat = cats[i]
 		local isSpawningCat = (cat == catOccupyingTube)
@@ -274,6 +287,7 @@ function love.draw()
 			love.graphics.pop()
 		end
 	end
+	love.graphics.setShader()
 
 	love.graphics.setColor(255, 255, 255, 255)
 	drawCenteredImage(tubeTopImage, tubeCenterX, -220, imageScale)
@@ -362,7 +376,9 @@ function drawCat(cat, imageScale)
 	
 	local alpha = (cat.isPlaced or canPlaceCat(cat)) and 1 or 0.7
 	love.graphics.setColor(255, 255, 255, 255 * alpha)
-
+	local colorPair = catColorPairs[cat.colorIndex]
+	catShader:send("color1", colorPair[1])
+	catShader:send("color2", colorPair[2])
 	for i = 1, #catPoints do
 		local point = catPoints[i]
 		local gridPoint = pAdd(point, catPosition)
@@ -380,7 +396,7 @@ function drawCat(cat, imageScale)
 			local nextPoint = catPoints[i + 1]
 			local image, angle = nil, 0
 			if math.abs(lastPoint.x) == math.abs(nextPoint.x) or math.abs(lastPoint.y) == math.abs(nextPoint.y) then
-				image = catBodyImage
+				image = (i == 2 and catBodyStartImage or catBodyImage)
 				angle = angleForPointDirection(pSub(nextPoint, point))
 			else
 				image = catCornerImage
@@ -484,7 +500,7 @@ end
 function love.mousereleased(x, y, button)
 	if not playing then
 		if gameOver then
-			if elapsedTime > gameEndedTime + END_SCREEN_IN_DURATION + 1 then
+			if elapsedTime > gameEndedTime + END_SCREEN_IN_DURATION + 0.25 then
 				if lastHighScore == nil or score > lastHighScore then lastHighScore = score end
 				reset()
 			end
@@ -712,8 +728,7 @@ function getNextCatLengthConstraint()
 	return minLength, maxLength
 end
 
--- cat members: points, identifier, gridPosition, isPlaced, isOnGrid, lastMeow
--- TODO: appearance (color / pattern / whatever), time of last movement, etc.
+-- cat members: points, identifier, gridPosition, isPlaced, isOnGrid, lastMeow, colorIndex
 function makeCat() -- returns cat
 	local minLength, maxLength = getNextCatLengthConstraint()
 	local length = math.random(minLength, maxLength)
@@ -757,6 +772,7 @@ function makeCat() -- returns cat
 	cat.gridPosition = p(xExtent > 0 and -11 or -10, 0)
 	cat.isOnGrid = false
 	cat.lastMeow = -MINIMUM_MEOW_INTERVAL
+	cat.colorIndex = math.random(#catColorPairs)
 
 	cats[identifier] = cat
 	catOccupyingTube = cat
