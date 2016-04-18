@@ -25,6 +25,7 @@ local catBodyImage = nil
 local catBodyStartImage = nil
 local catCornerImage = nil
 local catButtImage = nil
+local catTailImages = {}
 local backgroundSegmentImage = nil
 local tubeImage = nil
 local tubeTopImage = nil
@@ -100,6 +101,10 @@ function love.load()
 	catBodyStartImage = loadImage("body start")
 	catCornerImage = loadImage("corner")
 	catButtImage = loadImage("butt")
+	for i = 1, 4 do
+		catTailImages[i] = loadImage("tail " .. tostring(i))
+	end
+
 	backgroundSegmentImage = loadImage("background segment")
 	tubeImage = loadImage("tube")
 	tubeTopImage = loadImage("tube top")
@@ -171,7 +176,7 @@ end
 
 function setScore(newScore)
 	score = newScore
-	currentTimer = round(math.max(20, 40 - 2 * score) / 2) * 2
+	currentTimer = round(math.max(20, 42 - 2 * score) / 2) * 2
 end
 
 function clearGrid()
@@ -257,7 +262,7 @@ function love.draw()
 		love.graphics.push()
 		love.graphics.translate(boxX, 0)
 
-		love.graphics.setScissor((w / 2 + GRID_OFFSET_X - GRID_CELL_SIZE * PLACEMENT_GRID_COLUMNS * 0.5) * pixelScale, (h / 2 - GRID_CELL_SIZE * PLACEMENT_GRID_ROWS * 0.5) * pixelScale, GRID_CELL_SIZE * PLACEMENT_GRID_COLUMNS * pixelScale, GRID_CELL_SIZE * PLACEMENT_GRID_ROWS * pixelScale)
+		love.graphics.setScissor((w / 2 + GRID_OFFSET_X - GRID_CELL_SIZE * PLACEMENT_GRID_COLUMNS * 0.5 + boxX) * pixelScale, (h / 2 - GRID_CELL_SIZE * PLACEMENT_GRID_ROWS * 0.5) * pixelScale, GRID_CELL_SIZE * PLACEMENT_GRID_COLUMNS * pixelScale, GRID_CELL_SIZE * PLACEMENT_GRID_ROWS * pixelScale)
 		love.graphics.setShader(catShader)
 		for i = 1, #justBoxedCats do
 			drawCat(justBoxedCats[i], imageScale)
@@ -302,9 +307,18 @@ function love.draw()
 
 	drawCenteredImage(boxIconImage, w - 64, 68, imageScale)
 	drawText(tostring(score), w - 100, 44, true)
-	drawCenteredImage(timerIconImage, w - 240, 68, imageScale)
+	local timerX, timerY = w - 240, 68
+	drawCenteredImage(timerIconImage, timerX, timerY, imageScale)
 	local remainingTime = math.min(currentTimer, round(currentTimer - (playing and (elapsedTime - thisBoxStartedTime) or 0)))
 	drawText("0:" .. (remainingTime < 10 and "0" or "" ) .. tostring(remainingTime), w - 280, 44, true)
+	love.graphics.setColor(0, 0, 0, 255)
+	local timeAngle = 2 * math.pi * (remainingTime / 60)
+	local timeLineRadius = 12
+	timerY = timerY + 3
+	local timeLineX, timeLineY = math.sin(timeAngle) * timeLineRadius, -math.cos(timeAngle) * timeLineRadius
+	love.graphics.setLineWidth(3)
+	love.graphics.line(timerX, timerY, timerX + timeLineX, timerY + timeLineY)
+	love.graphics.setColor(255, 255, 255, 255)
 
 	local notPlayingVisibility = 0
 	if playing then
@@ -389,7 +403,10 @@ function drawCat(cat, imageScale)
 			local angle = angleForPointDirection(pSub(catPoints[i + 1], point))
 			drawCenteredImage(catHeadImage, centerX, centerY, imageScale, angle)
 		elseif i == #catPoints then
-			local angle = angleForPointDirection(pSub(point, catPoints[i - 1]))
+			local direction = pSub(point, catPoints[i - 1])
+			local angle = angleForPointDirection(direction)
+			local tailX, tailY = centerX + direction.x * GRID_CELL_SIZE * 0.7, centerY + direction.y * GRID_CELL_SIZE * 0.7
+			drawCenteredImage(catTailImages[cat.tailIndex], tailX, tailY, imageScale * 0.8, angle)
 			drawCenteredImage(catButtImage, centerX, centerY, imageScale, angle)
 		else
 			local lastPoint = catPoints[i - 1]
@@ -469,9 +486,15 @@ function love.keypressed(key)
 		shiftSound:rewind()
 		shiftSound:play()
 	end
+
+	--[[
 	if key == "q" then
 		boxGridCats()
 	end
+	if key == "e" then
+		endGame()
+	end
+	]]
 end
 
 function love.mousepressed(x, y, button)
@@ -773,6 +796,7 @@ function makeCat() -- returns cat
 	cat.isOnGrid = false
 	cat.lastMeow = -MINIMUM_MEOW_INTERVAL
 	cat.colorIndex = math.random(#catColorPairs)
+	cat.tailIndex = math.random(#catTailImages)
 
 	cats[identifier] = cat
 	catOccupyingTube = cat
